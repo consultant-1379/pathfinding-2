@@ -1,0 +1,14 @@
+{{- if .Values.brAgent.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "eric-data-distributed-coordinator-ed.agentName" . }}-headless
+  labels:
+{{- include "eric-data-distributed-coordinator-ed.labels" . | indent 2 }}
+  annotations:
+{{- include "eric-data-distributed-coordinator-ed.annotations" . | indent 2 }}
+spec:
+  clusterIP: None
+  selector:
+{{- include "eric-data-distributed-coordinator-ed.agent.selectorLabels" . | indent 4 }}
+{{ end }}

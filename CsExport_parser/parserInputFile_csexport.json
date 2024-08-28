@@ -1,0 +1,37 @@
+{
+    "parserList" :
+[
+{
+        "inputFile":"/root/csexport/SubNetwork_ONRM_ROOT_MO_R,SubNetwork_ERBS-SUBNW-1,MeContext_ERBS1.xml.gz",
+        "tp":"DIM_E_LTE_ERBS", 
+        "setType":"Adapter",
+        "setName":"Adapter_INTF_DIM_E_LTE_ERBS_csexport",
+        "actionContents":{
+                "outDir":"/root/csexport/",
+                "maxFilesPerRun":"10000",
+                "dublicateCheck":"false",
+                "thresholdMethod":"more",
+                "inDir":"/root/csexport/",
+                "interfaceName":"INTF_DIM_E_LTE_ERBS",
+                "ProcessedFiles.fileNameFormat":"",
+                "minFileAge":"1",
+                "baseDir":"/root/csexport/",
+				"archivePeriod":"168",
+				"useZip":"gzip",
+                "loaderDir":"/root/csexport/",
+                "parserType":"csexport",
+                "doubleCheckAction":"delete",
+                "ProcessedFiles.processedDir":"/root/csexport/",
+                "failedAction":"move",
+                "dirThreshold":"0",
+				"workers":"3",
+				"afterParseAction":"delete",
+				"vendorIDMask":".*,(.+=).*",
+				"extractHeaderRows":"false",
+				"readVendorIDFrom":"data",
+				"outputFormat":"0"
+				
+        }
+}
+]
+}

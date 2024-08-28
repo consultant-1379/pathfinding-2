@@ -1,0 +1,272 @@
+# Default values for eric-data-distributed-coordinator-ed.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+#global:
+  #registry:
+    # Global image registry
+    #url: armdocker.rnd.ericsson.se
+    # The Secret resource name to use for authenticating towards docker registry when pulling the image
+    #pullSecret: armdocker_secret_name
+  #timezone setting.
+  #timezone: UTC
+  #adpBR:
+    #service name
+    #broServiceName: eric-ctrl-bro
+    #service port
+    #broGrpcServicePort: 3000
+    #brLabelKey: adpbrlabelkey
+
+productInfo:
+  # R-State of the product. R State should match helm chart version (3.1.0 -> R2A)
+  # To automate it when packaging the helm chart rstate can be generated
+  # and below value replaced with correct R-State
+  rstate: "R3A"
+
+pods:
+  etcd:
+    # The number of pods in the Data Distributed Coordinator-ED ensemble
+    replicas: 3
+
+updateStrategy:
+  # Update Strategy
+  type: "RollingUpdate"
+
+imageCredentials:
+  registry:
+    # Docker registry url. Overrides global.registry.url
+    url:
+    # The Secret resource name to use for authenticating towards docker registry when pulling the image
+    #pullSecret: armdocker_secret_name
+  # Docker repository path
+  repoPath: "proj-adp-eric-data-distributed-coordinator-ed-drop"
+
+# container images pull Policy
+imagePullPolicy: "IfNotPresent"
+
+images:
+  etcd:
+    # Docker image name of the ETCD image
+    name: eric-data-distributed-coordinator-ed
+    # Docker image tag
+    tag: "2.2.0-9"
+  brAgent:
+    name: eric-data-distributed-coordinator-ed-bragent
+    tag: "2.2.0-9"
+   
+resources:
+  etcd:
+    requests:
+      # This is the min CPU setting at startup
+      cpu: "400m"
+      # This is the min Memory setting at startup
+      memory: "400Mi"
+    limits:
+      # This the maximum cpu setting that can be requested
+      cpu: "1"
+      # This is the max memory setting that can be requested
+      memory: "1Gi"
+  brAgent:
+   requests:
+     cpu: "400m"
+     memory: "400Mi"
+   limits:
+     cpu: "1"
+     memory: "2Gi"
+
+probes:
+  etcd:
+    readinessProbe:
+      # Number of seconds that kubelet waits before performing the first service availability check probe
+      InitialDelaySeconds : 10
+      # Timeout for the service availability check
+      TimeoutSeconds : 5
+    livenessProbe:
+      # The number of seconds that kubelet waits before performing the first health check probe
+      InitialDelaySeconds : 10
+      # The timeout for the health check
+      TimeoutSeconds : 5
+      # Number of time entrypoint.sh will check for etcd process
+      EntrypointChecksNumber: 60
+      # True to restart etcd each time it dies
+      EntrypointRestartEtcd: "true"
+      # Timeout (seconds) for read function while reading the pipe
+      EntrypointPipeTimeout: 5
+      # Min time (seconds) before checking for etcd process
+      EntrypointEctdProcessInterval: 5
+  brAgent:
+    readinessProbe:
+      # Number of seconds that kubelet waits before performing the first service availability check probe
+      InitialDelaySeconds : 10
+      # Timeout for the service availability check
+      TimeoutSeconds : 5
+    livenessProbe:
+      # The number of seconds that kubelet waits before performing the first health check probe
+      InitialDelaySeconds : 10
+      # The timeout for the health check
+      TimeoutSeconds : 5
+
+ports:
+  etcd:
+    # The port to listen for client connections
+    client: 2379
+    # The peer port
+    peer: 2380
+# Can specify labels for directing node assignment. Format - label: value
+nodeSelector:
+  dced: {}
+  brAgent: {}
+# sets inter-pod anti-affinity , values supported 'Soft/Hard'.
+affinity:
+  podAntiAffinity: "soft"
+# Environment variables
+env:
+  etcd:
+    # Enable or disable DEBUG log level for all etcd subpackages. If set to false, log level will be INFO
+    ETCD_DEBUG: false
+    # Set individual etcd subpackages to specific log levels
+    ETCD_LOG_PACKAGE_LEVELS: etcdserver=INFO,security=INFO
+    # Set level of detail for exported metrics, specify 'extensive' to include histogram metric
+    ETCD_METRICS: basic
+    # Maximum number of snapshot files to retain (0 is unlimited)
+    ETCD_MAX_SNAPSHOTS: 5
+    # Maximum number of wal files to retain (0 is unlimited)
+    ETCD_MAX_WALS: 5
+    # Raise alarms when backend size exceeds the given quota, give 256 MiB by default
+    ETCD_QUOTA_BACKEND_BYTES: "268435456"
+    #Interpret 'auto-compaction-retention' one of: 'periodic', 'revision'. 'periodic' for duration based retention (e.g. '5m'), 'revision' for revision number based retention
+    ETCD_AUTO_COMPACTION_MODE: "revision"
+    # Auto compaction retention for mvcc key value store in hour/or based on retention. 0 means disable auto compaction.
+    ETCD_AUTO_COMPACTION_RETENTION: 100
+    # Enable/ Disable defragmentation - enabled by default
+    DEFRAGMENT_ENABLE: "true"
+    # defragments every set interval (in minutes) once the pod is alive and defragmentation is enabled- default 60 min
+    DEFRAGMENT_PERIODIC_INTERVAL: 60
+    # Acccept etcd V2 client requests
+    ETCD_ENABLE_V2: "false"
+
+security:
+  tls:
+    agentToBro:
+      enabled: true
+  etcd:
+    acls:
+      # The name of the secret containing etcd credentials
+      adminSecret: eric-data-distributed-coordinator-creds
+      # The key within the secret containing etcd password
+      rootPassword: etcdpasswd
+    certificates:
+      # Enable certitificates from SIP-TLS
+      enabled: true
+      server:
+        # path where server certificates and keys are stored
+        path: /run/sec/certs/server
+      client:
+        # path where client (etcdctl) certificates and keys are stored
+        path: /run/sec/certs/client
+        # enable client cert auth
+        clientCertAuth: true
+      peer:
+        autoTls: true
+        path: /run/sec/certs/peer
+        peerCertAuth: true
+      ca:
+        # common base folder for all cas
+        parentDir: /run/sec/cas/
+        bootstrap:
+          # path where bootstrap CA certificates are stored
+          path: bootstrap/
+          # name of the bootstrap CA certificates
+          name: eric-sec-sip-tls-bootstrap-ca-cert
+          # file name of certificate
+          fileName: cacertbundle.pem
+        sipTls:
+          # name of the sip-tls CA certificates
+          name: eric-sec-sip-tls-trusted-root-cert
+          # path where siptls CA certificates are stored
+          path: siptlsca/
+          # file name of certificate
+          fileName: cacertbundle.pem
+        client:
+          # path where client CA certificates are stored
+          path: clientca/
+          # file name of certificate
+          fileName: client-cacertbundle.pem
+        combined:
+          # path where concatenated certificates are stored, this is a subfolder in the PVC
+          path: combinedca/
+          # file name of certificate
+          fileName: cacertbundle.pem
+
+persistentVolumeClaim:
+  etcd:
+    # Size of the persistent volume for each **Distributed Coordinator ED** pod
+    storage: "500Mi"
+    # The storage class to use for the persistent volume
+    storageClassName: "hostpath"
+    # Persistent Volume access mode
+    accessMode: "ReadWriteOnce"
+    # Mount path
+    mountPath: "/root/mdc/data"
+
+persistence:
+  persistentVolumeClaim:
+    size: "500Mi"
+    storageClassName: "hostpath"
+    enabled: false
+    mountPath: "/root/mdc/data"
+  brAgent:
+    backupVolume:
+      # Size of the persistent volume for each **backup & restore agent** pod
+      size: "500Mi"
+      # The storage class to use for the persistent volume
+      storageClassName: "hostpath"
+      # Persistent Volume access mode
+      accessMode: "ReadWriteOnce"
+      # Mount path
+      mountPath: "/root/mdc/sharedData/backupdata"
+
+clusterDomain: "cluster.local"
+
+brAgent:
+   enabled: false
+   brLabelValue:
+   backupTypeList:
+   replicas: 1
+   logLevel: "INFO"
+   backupFileName: "snapshot.txt"
+   maxInboundMessageSize: ""
+   properties:
+     fileName: "application.properties"
+     applicationProperties: |-
+       dced.agent.restore.type=overwrite
+       dced.excluded.paths=
+       dced.included.paths=
+   logging:
+     fileName: "log4j2.xml"
+     log4jxml: |-
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Configuration status="WARN" monitorInterval="30" packages="com.ericsson.adp.mgmt.dced.bragent.logging">
+            <Appenders>
+                <Console name="Appender" target="SYSTEM_OUT" follow="true">
+                    <AdpJsonLayout compact="true" eventEol="true" >
+                       <!--  Mandatory Fields -->
+                       <KeyValuePair key="version" value="0.3.0"/>
+                       <KeyValuePair key="timestamp" value="yyyy-MM-dd'T'HH:mm:ss.SSSZ"/>
+                       <KeyValuePair key="service_id" value="eric-data-distributed-coordinator-ed-bra-agent"/>
+                       <RewriteField oldKey="level_standardLevel" newKey="severity"/>
+                       <RewriteField oldKey="message_formattedMessage" newKey="message"/>
+                       <!--  Optional Fields -->
+                       <KeyValuePair key="function" value="Backup and Restore"/>
+                       <KeyValuePair key="category" value="Distributed Coordinator ED"/>
+                       <RewriteField oldKey="source_classLoaderName" newKey="proc_id"/>
+                       <RewriteField oldKey="source_className" newKey="ul_id"/>
+                    </AdpJsonLayout>
+                </Console>
+            </Appenders>
+            <Loggers>
+                <Root level="${env:LOG_LEVEL:-INFO}">
+                    <AppenderRef ref="Appender" />
+                </Root>
+            </Loggers>
+        </Configuration>

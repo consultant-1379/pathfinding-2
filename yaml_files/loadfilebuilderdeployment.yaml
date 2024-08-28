@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: loadfilebuilder
+  name: loadfilebuilder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadfilebuilder
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: loadfilebuilder
+    spec:
+      containers:
+      - image: 10.45.193.129:5000/loadfilebuilder:1.0
+        name: loadfilebuilder
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/loadfilebuilder
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "9887"
+        - name: APP_HOME
+          value: "/root/loadfilebuilder"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.loadfilebuilder.com.ericsson.eniq.loadfilebuilder"
+
+        resources:
+         limits:
+            #cpu: "1"
+         requests:
+            cpu: 3
+        ports: []
+        # containerPort is the port exposed by the container (where nodejs express api is listening)
+        # - containerPort: 9887
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/loadfilebuilder
+          # this field is optional
+          type: Directory

@@ -1,0 +1,347 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+  labels:
+{{- include "eric-data-distributed-coordinator-ed.labels" . | indent 2 }}
+  annotations:
+{{- include "eric-data-distributed-coordinator-ed.annotations" . | indent 2 }}
+data:
+  {{ $MOUNTPATH := include "eric-data-distributed-coordinator-ed.mountPath" . }}
+  addMember.sh: |
+    #!/bin/bash -x
+
+    # change file ownership of pv
+    chown -R 3605:0 ${ETCD_DATA_DIR}
+
+    while true
+    do
+        ordinal=${ETCD_NAME##*-}
+        # enable authentication very first time that etcd-0 is started
+        if [  ${ordinal} -eq 0 ] && [ ! -f "${ETCD_DATA_DIR}/auth_successful" ]
+        then
+
+          # make sure everything succeeds
+          set +e
+          # start etcd locally without any cert validation
+          ETCDCTL_ENDPOINTS="localhost:{{ .Values.ports.etcd.client }}"
+
+          unset ETCDCTL_CACERT ETCDCTL_CERT ETCDCTL_KEY
+          echo "==> Configuring RBAC authentication!"
+
+          # etcd will listen on localhost and accept requests on localhost only
+          /usr/local/bin/etcd  &
+
+          while ! /usr/local/bin/etcdctl member list ; do sleep 1; done
+          # disable command output
+          set +x
+          /usr/local/bin/etcdctl --user root:${ACL_ROOT_PASSWORD} user get root  || /usr/local/bin/etcdctl user add root:${ACL_ROOT_PASSWORD}
+          /usr/local/bin/etcdctl auth enable  || /usr/local/bin/etcdctl --user root:${ACL_ROOT_PASSWORD} auth enable
+          set -x
+
+          touch ${ETCD_DATA_DIR}/auth_successful
+
+          # there's nothing else todo here
+          exit 0
+        fi
+
+    {{- if .Values.security.etcd.certificates.enabled }}
+        /usr/local/bin/scripts/switch_ca_cert.sh  -c
+        chown -R 3605:0 {{ printf "%s/%s" $MOUNTPATH .Values.security.etcd.certificates.ca.combined.path }}
+    {{ end }}
+
+        # get all members in the cluster
+        member_list=$(/usr/local/bin/etcdctl member list )
+        member_list_return_code=$?
+
+
+        # check if the new node is already in the cluster
+         
+        my_member_line=$(/usr/local/bin/etcdctl member list | grep ${ETCD_NAME}. )
+        member_line_return_code=$?
+
+        # get member_id
+        member_id=$(echo $my_member_line | cut -d, -f1)
+
+        
+        # if the cluster exists
+        if [ $member_list_return_code -eq 0 ]
+        then
+           # disable the output of running commands, because of the the sensitive ACL_ROOT_PASSWORD
+           set +x
+           # if new node not yet in cluster
+           if [ $member_line_return_code -ne 0 ]
+           then
+               # add node to cluster
+               member_add_line=$(/usr/local/bin/etcdctl member add ${ETCD_NAME} --peer-urls=${ETCD_INITIAL_ADVERTISE_PEER_URLS} || /usr/local/bin/etcdctl member add --user root:${ACL_ROOT_PASSWORD} ${ETCD_NAME} --peer-urls=${ETCD_INITIAL_ADVERTISE_PEER_URLS} )
+               member_add_line_return_code=$?
+           elif [[ -z $(/usr/local/bin/etcdctl member list | grep ${ETCD_INITIAL_ADVERTISE_PEER_URLS}) ]]
+           then
+              # already in cluster update peer url in case it changed
+               member_add_line=$(/usr/local/bin/etcdctl member update $member_id --peer-urls=${ETCD_INITIAL_ADVERTISE_PEER_URLS} || /usr/local/bin/etcdctl member update --user root:${ACL_ROOT_PASSWORD} $member_id --peer-urls=${ETCD_INITIAL_ADVERTISE_PEER_URLS} )
+               member_add_line_return_code=$?
+           else
+               exit 0
+           fi        
+           # enable the output of running commands
+           set -x
+           # check if new node has been added correctly
+           if [ $member_add_line_return_code -eq 0 ]
+           then
+             exit 0
+           fi
+        else
+          if [ $ordinal -ne 0 ]
+          then
+            # check if already initialized
+            if [ -d "${ETCD_DATA_DIR}/member" ]
+            then
+                # we were a member previously but we cannot reach the cluster, start with whatever config we have
+                exit 0
+            else
+                echo "cluster id is not 0, but there is not cluster and this instance has not been initialized previously"
+            fi
+          else
+            exit 0
+          fi
+        fi
+        
+        sleep 2
+    done
+
+    EOF
+
+  etcd_runner.sh: |
+    #!/bin/bash -xe
+    # get ordinal
+    ordinal=${ETCD_NAME##*-}
+
+    # get service name
+    base_name=`echo $ETCD_NAME | sed "s/-${ordinal}$//g"`
+
+    if [[ "$ordinal" = "0" ]]; then
+        export ETCD_INITIAL_CLUSTER_STATE="new"
+    else
+        export ETCD_INITIAL_CLUSTER_STATE="existing"
+    fi
+
+    # create ETCD_INITIAL_CLUSTER:
+    # for peer 0 this is eric-distributed-coordinator-0=url-0
+    # for peer 1 this is eric-distributed-coordinator-0=url-0,eric-distributed-coordinator-1=url-1
+    # for peer 2 this is eric-distributed-coordinator-0=url-0,eric-distributed-coordinator-1=url-1,eric-distributed-coordinator-2=url-2
+
+    replace_string="XYZ"
+    initial_cluster_base="${ETCD_NAME}=${ETCD_INITIAL_ADVERTISE_PEER_URLS}"
+    initial_cluster_base="${initial_cluster_base//$ETCD_NAME/${replace_string}}"
+    ETCD_INITIAL_CLUSTER="${initial_cluster_base//${replace_string}/$base_name-0}"
+
+    for (( c=1; c<=$ordinal; c++ ))
+    do
+        ETCD_INITIAL_CLUSTER=${ETCD_INITIAL_CLUSTER},${initial_cluster_base//${replace_string}/$base_name-$c}
+    done
+
+    export ETCD_INITIAL_CLUSTER
+
+    {{- if .Values.security.etcd.certificates.enabled }}
+    ETCD_PEER_CERT_FILE={{ include "eric-data-distributed-coordinator-ed.peerClientCert" . }}
+    ETCD_PEER_KEY_FILE={{ include "eric-data-distributed-coordinator-ed.peerClientKeyFile" . }}
+    AUTO_TLS={{ .Values.security.etcd.certificates.peer.autoTls }}
+    CA_FILE={{ include "eric-data-distributed-coordinator-ed.trustedCA" . }}
+
+    /usr/local/bin/scripts/switch_ca_cert.sh  -cs
+
+    #To verify non-bootstrap mode, verify Client and Root CA certs are available
+    numberofcerts=$(grep -ic "begin" ${CA_FILE})
+    if [[ -f ${CA_FILE} && $numberofcerts -gt 1 ]];then
+      isBootstrapping=false
+    else
+      isBootstrapping=true
+    fi
+      echo "Is bootstraping ? ${isBootstrapping}"
+      #If non-bootstrap mode and pod-0, use peer certs for pod-0
+      #For other pods, use peer certs
+      if [[ "${ETCD_NAME: -1}" == 0  && ${isBootstrapping} == "false" ]] || [[ ! "${ETCD_NAME: -1}" == 0 ]];then
+
+        echo "Setup peer certs for ${ETCD_NAME} "
+        ETCD_LISTEN_PEER_URLS={{ template "eric-data-distributed-coordinator-ed.peerUrl" . }}
+        export ETCD_LISTEN_PEER_URLS
+
+        while [[ "${AUTO_TLS}" == "false" && ! -s ${ETCD_PEER_CERT_FILE} && ! -s ${ETCD_PEER_KEY_FILE} ]]
+        do
+           echo "Peer certs empty ${ETCD_PEER_CERT_FILE} ${ETCD_PEER_KEY_FILE},sleep 2 seconds. "
+           sleep 2
+        done
+
+        if [[ "${AUTO_TLS}" == "false" ]]; then
+          echo "Auto TLS disabled , setup SIP-TLS certs for peer communication"
+          ETCD_PEER_CLIENT_CERT_AUTH={{ .Values.security.etcd.certificates.peer.peerCertAuth | quote }}
+          ETCD_PEER_TRUSTED_CA_FILE={{ template "eric-data-distributed-coordinator-ed.trustedCA" . }}
+          ETCD_PEER_CERT_FILE={{ template "eric-data-distributed-coordinator-ed.peerClientCert" . }}
+          ETCD_PEER_KEY_FILE={{ template "eric-data-distributed-coordinator-ed.peerClientKeyFile" . }}
+
+          export ETCD_PEER_CLIENT_CERT_AUTH
+          export ETCD_PEER_TRUSTED_CA_FILE
+          export ETCD_PEER_CERT_FILE
+          export ETCD_PEER_KEY_FILE
+        else
+          echo "Auto TLS enable , using ETCD auto generated certs for peer communication"
+        fi
+      else
+        #This could happen during SIP-TLS,KMS TLS bootstraping.
+        echo "Peer cert ${ETCD_PEER_CERT_FILE} not found , starting as standalone. "  
+      fi
+    {{ end }}
+
+    # redirect etcd output to named pipe open by entrypoint.sh so we can continue to stream etcd log to k8s in real time.
+    /usr/local/bin/etcd > ~/etcd.fifo
+    
+  liveness.sh: |
+    #!/bin/bash -xe
+
+    # grep the control file for pod status
+    if grep -qi 'alive' ~/etcd.liveness; then
+      exit 0
+    else
+      exit 1
+    fi
+
+  switch_ca_cert.sh: |
+    #!/bin/bash -xe
+
+    # options
+    # -c check if ca cert does not exist, exit
+    # -s restart pod if certs change
+    # -w wait for at least one of the ca cert files to exist
+
+
+    # concat all potential locations of the ca certs
+    # in phase 1 (siptls not started, kms partially started) use bootstrap cert
+    # after phase 2 use own client CA
+    PHASE_1_CA_CERT_FILE={{ printf "%s/%s/%s" .Values.security.etcd.certificates.ca.parentDir .Values.security.etcd.certificates.ca.bootstrap.path     .Values.security.etcd.certificates.ca.bootstrap.fileName }}
+
+    PHASE_2_CA_CERT_FILE={{ printf "%s/%s/%s" .Values.security.etcd.certificates.ca.parentDir .Values.security.etcd.certificates.ca.client.path     .Values.security.etcd.certificates.ca.client.fileName }}
+    SIPTLS_CA_CERT_FILE={{ printf "%s/%s/%s" .Values.security.etcd.certificates.ca.parentDir .Values.security.etcd.certificates.ca.sipTls.path     .Values.security.etcd.certificates.ca.sipTls.fileName }}
+    CA_FILE={{ include "eric-data-distributed-coordinator-ed.trustedCA" . }}
+
+    while getopts cs option
+    do
+        case "${option}"
+        in
+        c) CHECK=true;;
+        s) SUICIDE=true;;
+        esac
+    done
+    mkdir -p {{ printf "%s/%s" $MOUNTPATH .Values.security.etcd.certificates.ca.combined.path }}
+
+    # if etcd-0, then wait for at least one of the cert files to exist
+    if [[ "${ETCD_NAME: -1}" == 0 ]]
+    then
+        while  [[ ! -f "$PHASE_1_CA_CERT_FILE" ]] && [[ ! -f "$PHASE_2_CA_CERT_FILE" ]] 
+        do
+            sleep 2
+        done
+    else
+        # if etcd-1 or etcd-2, then wait for all cert files to exist
+        while  [[ ! -f "$PHASE_2_CA_CERT_FILE" ]] || [[ ! -f "$SIPTLS_CA_CERT_FILE" ]]
+        do
+            sleep 2
+        done
+    fi
+
+    if [[ -v SUICIDE ]]
+    then
+      # etcd automatically reloads the server and client certs
+      # but it does not reload the CA
+      # we need to restart etcd to make this happen
+      # sleep a little to ensure etcd has been started (in case the cert changes immediately after setting up this watch
+      # if an exiting inotifywait process is detected, skip step.
+      if [[ -z $(pgrep inotifywait) ]]
+      then
+        (inotifywait -r {{ .Values.security.etcd.certificates.ca.parentDir }} -e create,modify,delete >> /data/inotify.log && sleep 3 && pkill etcd )  &
+      fi
+    fi
+
+    # put all CAs in one file, ensure CA is not empty
+    rm -f $CA_FILE
+    while [[ ! -s $CA_FILE ]]
+    do
+      awk 1 {{ .Values.security.etcd.certificates.ca.parentDir }}/*/*cacertbundle.pem > $CA_FILE
+      if [[ ! -s $CA_FILE ]];
+      then
+        sleep 2
+      fi
+    done
+
+    cat $CA_FILE
+
+    # exit if ca file does not exist (if -c is given as argument)
+    if [[ -v CHECK && ! -f "$CA_FILE" ]]
+    then
+      echo "No content in $CA_FILE"
+      exit 1
+    fi
+
+  etcd_defragmentation.sh: |
+    #!/bin/bash
+    # runs defragmentation command every set interval(minute)
+    while true; do
+      {{- if .Values.security.etcd.certificates.enabled }}
+      /usr/local/bin/etcdctl defrag  --endpoints=:{{ .Values.ports.etcd.client }} --insecure-skip-tls-verify || true
+      {{- else }}
+      /usr/local/bin/etcdctl --user root:${ACL_ROOT_PASSWORD} defrag --endpoints=:{{ .Values.ports.etcd.client }} || true
+      {{ end }}
+      sleep ${DEFRAGMENT_PERIODIC_INTERVAL}m
+    done
+
+  entrypoint.sh: |
+    #!/bin/bash
+    LOGS=~/etcd.fifo
+
+    # this is used by the liveness probe to check if the pod is alive
+    echo "alive" > ~/etcd.liveness
+    # open a named pipe for etcd_runner.sh. Leave it in read write mode to avoid blocking the script. A pipe is used to avoid filling disk space with logs
+    mkfifo $LOGS
+    if [ $? -ne 0 ]; then
+         echo "Cannot open logging pipe"
+         exit 1
+    fi
+
+    # run the script in background
+    nohup /usr/local/bin/scripts/etcd_runner.sh &
+    # get the pid to check for it later
+    PIDRUNNER=$!
+    if [[ ${DEFRAGMENT_ENABLE}=="true" ]]; then
+      nohup /usr/local/bin/scripts/etcd_defragmentation.sh &
+    fi
+    fail_count={{ .Values.probes.etcd.livenessProbe.EntrypointChecksNumber }}
+    restart={{ .Values.probes.etcd.livenessProbe.EntrypointRestartEtcd }}
+    # checking for etcd health
+    while true; do
+      # get the start time so is possible to know the time spent reading the pipe
+      start=$(date +"%s")
+
+      # read logs from pipe
+      IFS=$'\n'
+      while read -r -t {{ .Values.probes.etcd.livenessProbe.EntrypointPipeTimeout }} line; do
+        echo $line
+      done < $LOGS
+      # calculate time spent reading the pipe
+      end=$(date +"%s")
+      time_spent=$((end-start))
+
+      # if we spent less then 5 seconds, add some sleep. this is useful to avoid too much cpu cycles
+      if [[ ${time_spent} -le {{ .Values.probes.etcd.livenessProbe.EntrypointEctdProcessInterval }} ]]; then
+        sleep $(({{ .Values.probes.etcd.livenessProbe.EntrypointEctdProcessInterval }}-time_spent))
+      fi
+
+      # if etcd is not running and ENTRYPOINT_RESTART is true, restart etcd, otherwise exit
+      if ! kill -0 ${PIDRUNNER} >/dev/null 2>&1; then
+        if [[ ${restart} == "true" ]]; then
+          echo "Restarting ETCD"
+          nohup /usr/local/bin/scripts/etcd_runner.sh &
+          PIDRUNNER=$!
+        else
+          echo "dead" > ~/etcd.liveness
+        fi
+      fi
+    done

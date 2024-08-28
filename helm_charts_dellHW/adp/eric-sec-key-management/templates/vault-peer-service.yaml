@@ -1,0 +1,27 @@
+# Used for client redirection from standby node to active peer node
+# Publishes the pod DNS records for the Statefulset
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}-peer
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: {{ template "eric-sec-key-management.name" . }}
+  ports:
+    - name: https-kms
+      port: 8200
+    - name: cluster-kms
+      port: 8201
+    {{- if .Values.shelter.enabled }}
+    - name: https-shelter
+      port: 8210
+    - name: cluster-shelter
+      port: 8211
+    {{- end }}

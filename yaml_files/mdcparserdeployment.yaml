@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: mdcparser
+  name: mdcparser
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mdcparser
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: mdcparser
+    spec:
+      containers:
+      - image: 10.45.194.77:5000/mdcparser:1.0
+        name: mdcparser
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/mdc
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "9887"
+        - name: APP_HOME
+          value: "/root/parser"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.etl.mdc.MdcApplication"
+
+        resources:
+         limits:
+            cpu: 500m
+         requests:
+            cpu: 200m
+        ports:
+        # containerPort is the port exposed by the container (where nodejs express api is listening)
+        - containerPort: 9887
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/mdc
+          # this field is optional
+          type: Directory

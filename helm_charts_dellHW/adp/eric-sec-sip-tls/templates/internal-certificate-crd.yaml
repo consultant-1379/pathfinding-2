@@ -1,0 +1,187 @@
+{{- if .Values.manuallyDeployCrd }}
+
+# Install manually, replacing <VERSION> with the current k8s server version of your cluster.
+# The version can be fetched by checking the serverVersion.gitVersion field of the 'kubectl version' command. E.g.:
+#
+#   VERSION=$(kubectl version -o yaml | grep "serverVersion" -A9 | grep "gitVersion" | awk '{print $2}') && echo $VERSION
+#
+# Then install the CRD by issuing the following command:
+#
+#   helm template charts/eric-sec-sip-tls/ -x templates/internal-certificate-crd.yaml --set manuallyDeployCrd=true --kube-version="$VERSION" | kubectl apply -f -
+#
+# 'helm template' renders the template without executing it and outputs the result.
+# 'kubectl apply' takes the output as stdin and pushes it to the cluster.
+#
+# Side note: 'helm template' renders the values locally without contacting tiller. This means that .Capabilities struct is faked and cannot be used directly.
+#            Instead kube-version is given manually to indicate a sufficient k8s version.
+
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: internalcertificates.siptls.sec.ericsson.com
+  annotations:
+    {{- include "eric-sec-sip-tls.product-info" . | nindent 4 }}
+spec:
+  group: siptls.sec.ericsson.com
+  {{- if (semverCompare ">=1.11" .Capabilities.KubeVersion.GitVersion) }}
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+  {{- else }}
+  version: v1alpha1
+  {{- end }}
+  scope: Namespaced
+  names:
+    plural: internalcertificates
+    singular: internalcertificate
+    kind: InternalCertificate
+    shortNames:
+      - intcert
+      - intcerts
+      - internalcert
+      - internalcerts
+  {{- if (semverCompare ">=1.15" .Capabilities.KubeVersion.GitVersion) }}
+  preserveUnknownFields: false
+  {{- end }}
+  {{- if (semverCompare ">=1.11" .Capabilities.KubeVersion.GitVersion) }}
+  validation:
+    openAPIV3Schema:
+      type: object
+      description: InternalCertificate is used to request a certificate and private key from SIP-TLS.
+      properties:
+        spec:
+          required:
+            - kubernetes
+            - certificate
+          type: object
+          description: Spec defines the properties of the certificate and private key.
+          properties:
+
+
+            kubernetes:
+              type: object
+              description: Defines properties related to the storage of the certificate and private key in Kubernetes.
+              required:
+                - generatedSecretName
+              properties:
+                generatedSecretName:
+                  type: string
+                  description: The secret where the certificate and key are stored. The same secret should not be used
+                               for multiple purposes.
+                  # Use the same regex as used by Kubernetes API Server
+                  pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+
+                certificateName:
+                  type: string
+                  description: The YAML key name of the certificate in the secret. If not given, 'cert.pem' is used.
+                  # Disallow whitespace
+                  pattern: '^[^\s]+$'
+
+                privateKeyName:
+                  type: string
+                  description: The YAML key name of the private key in the secret. If not given, 'key.pem' is used.
+                  # Disallow whitespace
+                  pattern: '^[^\s]+$'
+
+                privateKeyFormat:
+                  type: string
+                  description: The format of the private key in the secret. One of 'pkcs1' or 'pkcs8'. If not given,
+                               'pkcs8' is used.
+                  enum:
+                    - 'pkcs1'
+                    - 'pkcs8'
+
+
+            certificate:
+              type: object
+              description: Defines properties related to the content of the certificate.
+              required:
+                - subject
+                - extendedKeyUsage
+              properties:
+                subject:
+                  type: object
+                  description: Properties related to X.509 'Subject' field.
+                  required:
+                    - cn
+                  properties:
+                    cn:
+                      type: string
+                      description: The Subject Common Name (CN) of the certificate. This typically corresponds to the
+                                   hostname of the service or a client identifier.
+
+                validity:
+                  type: object
+                  description: Properties related to X.509 'Not After' field and renewal period.
+                  properties:
+                    overrideTtl:
+                      type: integer
+                      description: The duration (seconds) that the certificate is valid. This is an absolute value. If
+                                   not specified, the default time to live configured in SIP-TLS is used.
+                      minimum: 180
+                      maximum: 15778800
+                    overrideLeadTime:
+                      type: integer
+                      description: The lead time (seconds) before certificate is renewed. This is an absolute value. If
+                                   not given, the lead time is calculated from the renewalThreshold and the time to live
+                                   of the certificate. Lead time must be smaller than the certificate validity time.
+                      minimum: 180
+
+                issuer:
+                  type: object
+                  description: Properties related to X.509 'Issuer' field.
+                  properties:
+                    reference:
+                      type: string
+                      nullable: true
+                      description: The identifier for the Issuer CA. Decides from which CA to request the certificate.
+                                   It must be the same as the InternalUserCA custom resource metadata.name field. If
+                                   left empty, the certificate is issued by SIP-TLS intermediate CA which is part of
+                                   the SIP-TLS trusted root CA chain.
+                      # Disallow whitespace
+                      pattern: '^[^\s]*$'
+
+                subjectAlternativeName:
+                  type: object
+                  description: Properties related to X.509 v3 extension 'Subject Alternative Name'.
+                  properties:
+                    populateKubernetesDns:
+                      type: boolean
+                      description: Whether to populate the Subject Alt Name with fully qualified DNS names of the
+                                   cluster, based on the common name value from 'certificate.subject.cn'. If true, the
+                                   following DNS are populated automatically. '<common-name>',
+                                   '<common-name>.<namespace>', '<common-name>.<namespace>.svc',
+                                   '<common-name>.<namespace>.svc.<cluster-domain>'.
+                    dns:
+                      type: array
+                      description: List of additional DNS to populate into Subject Alt Name field.
+                      items:
+                        type: string
+                        # Disallow whitespace
+                        pattern: '^[^\s]+$'
+
+                extendedKeyUsage:
+                  type: object
+                  description: Properties related to X.509 v3 extension 'Extended Key Usage'.
+                  required:
+                    - tlsClientAuth
+                    - tlsServerAuth
+                  properties:
+                    tlsClientAuth:
+                      type: boolean
+                      description: Whether Extended Key Usage flag 'TLS Web Client Authentication' is set or not.
+                    tlsServerAuth:
+                      type: boolean
+                      description: Whether Extended Key Usage flag 'TLS Web Server Authentication' is set or not.
+  additionalPrinterColumns:
+    - name: CN
+      type: string
+      description: The requested certificate common name.
+      JSONPath: .spec.certificate.subject.cn
+    - name: Secret
+      type: string
+      description: The Kubernetes secret where the certificate and key are stored.
+      JSONPath: .spec.kubernetes.generatedSecretName
+  {{- end }}
+{{- end }}

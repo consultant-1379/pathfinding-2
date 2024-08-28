@@ -1,0 +1,65 @@
+# Watch Dog Certificate (wdc) for probing the sip-tls functionality.
+#
+# SIP-TLS should renew this certificate frequently provided that the sip-tls
+# is working properly. If the renewal process fails and this certificate expires
+# then an alarm is raised with diagnostic information about the sip-tls system status
+# and long-lived emergency certificates are deployed for all client and server
+# certificates in the system.
+
+{{- $intcert_v1       := .Capabilities.APIVersions.Has "siptls.sec.ericsson.com/v1/InternalCertificate" }}
+{{- $intcert_v1alpha1 := .Capabilities.APIVersions.Has "siptls.sec.ericsson.com/v1alpha1/InternalCertificate"}}
+
+{{- if or $intcert_v1 $intcert_v1alpha1 }}
+
+{{- if $intcert_v1 }}
+apiVersion: siptls.sec.ericsson.com/v1
+{{- else }}
+apiVersion: siptls.sec.ericsson.com/v1alpha1
+{{- end }}
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-sec-sip-tls.name" . }}-wdc-cert
+  labels:
+    {{- include "eric-sec-sip-tls.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-sip-tls.product-info" . | nindent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-sec-sip-tls.name" . }}-wdc-certs
+    certificateName: 'srvcert.pem'
+    privateKeyName: 'srvprivkey.pem'
+  certificate:
+    subject:
+      cn: {{ template "eric-sec-sip-tls.name" . }}-wdc
+    validity:
+      # The time-to-live of the certificate.
+      # This should be aligned with the liveness probe period, because the liveness
+      # probe checks the certificate validity and initiates the alarm process
+      # if the watchdog certificate has expired.
+      overrideTtl: {{ template "eric-sec-sip-tls.supervisor.wdcTtl" . }}
+    extendedKeyUsage:
+      # Not a certificate used for communication
+      tlsClientAuth: false
+      tlsServerAuth: false
+
+{{- else }}
+
+apiVersion: com.ericsson.sec.tls/v1alpha1
+kind: ServerCertificate
+metadata:
+  name: {{ template "eric-sec-sip-tls.name" . }}-wdc-server-cert
+  labels:
+    {{- include "eric-sec-sip-tls.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-sip-tls.product-info" . | nindent 4 }}
+spec:
+  generated-secret-name: {{ template "eric-sec-sip-tls.name" . }}-wdc-certs
+  common-name: {{ template "eric-sec-sip-tls.name" . }}-wdc
+
+  # The time-to-live of the certificate.
+  # This should be aligned with the liveness probe period, because the liveness
+  # probe checks the certificate validity and initiates the alarm process
+  # if the watchdog certificate has expired.
+  override-ttl: {{ template "eric-sec-sip-tls.supervisor.wdcTtl" . }}
+
+{{- end }}

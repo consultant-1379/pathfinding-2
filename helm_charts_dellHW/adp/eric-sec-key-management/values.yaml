@@ -1,0 +1,137 @@
+#global:
+  ## pullSecret, the secret resource name used for authenticating towards docker registry where images are pulled
+  #pullSecret:
+  ## internalIPFamily, IP version can be chosen in dual stack cluster
+  #internalIPFamily:
+  #registry:
+    ## Docker registry url
+    #url: armdocker.rnd.ericsson.se
+    ## imagePullPolicy, desired policy under which condition the images are pulled from registry
+    #imagePullPolicy: IfNotPresent
+    ## global.registry.pullSecret, deprecated and removed in favor of global.pullSecret
+    #pullSecret:
+
+imageCredentials:
+  repoPath: proj-common-assets-cd/security
+  ## pullSecret, the secret resource name used for authenticating towards docker registry where images are pulled
+  ## overrides the global setting when set
+  pullSecret: null
+  ## imageCredentials.pullPolicy, deprecated and removed in favor of imageCredentials.registry.imagePullPolicy
+  pullPolicy: IfNotPresent
+  registry:
+    ## url, service specific Docker registry url, overrides the global setting when set
+    url: null
+    ## pullSecret, is deprecated and removed in favor of imageCredentials.pullSecret
+    pullSecret: null
+    ## imagePullPolicy, service specific policy, overrides the global setting when set
+    imagePullPolicy: null
+
+updateStrategy:
+  ## If the chosen pvc backend does not support ReadWriteOnce access, use 'Recreate'
+  type: RollingUpdate
+
+## replicas, number of vault instances. Only one of them is active. Max value is 2.
+## If set to 2 requires persistence.type=etcd
+replicas: 1
+
+persistence:
+  type: etcd
+  etcd:
+    ## serviceName, database service name
+    serviceName: eric-data-distributed-coordinator-ed
+    ## servicePort, database service port to connect
+    servicePort: 2379
+    tls:
+      ## Toggle TLS secured communication for DCED
+      ## Requires Service Identity Provider TLS service
+      enabled: true
+      ## trustedCaSecret, secret name holding trusted CA root certificate
+      trustedCaSecret: eric-sec-sip-tls-trusted-root-cert
+      ## credSecret, name of the secret containing etcd client cert for DCED 'root' user
+      credSecret: eric-data-distributed-coordinator-ed-etcdctl-client-cert
+      ## caResource, CA name (issuer-ref) for client certificate
+      caResource: eric-data-distributed-coordinator-ed-ca
+
+  ## Usage of the pvc is not for production use, only for demo/test usage
+  pvc:
+    size: 100Mi
+    storageClassName: null
+    # keep the pvc after helm deletion or not
+    keep: true
+
+images:
+  ## The container that runs the backed up Vault instance
+  vault:
+    name: eric-sec-key-management-main
+    tag: 2.10.0-27
+
+  ## The container that runs the non-backed up Vault instance
+  shelter:
+    name: eric-sec-key-management-main
+    tag: 2.10.0-27
+
+  ## Init container that intializes and configures Vault
+  unsealer:
+    name: eric-sec-key-management-configurator
+    tag: 2.10.0-27
+
+  ## Init container that configures access rights towards DCED
+  ca:
+    name: eric-sec-key-management-dced-configurator
+    tag: 2.10.0-27
+
+
+## Whether Vault should be unsealed automatically when becoming sealed.
+## If this is set to false, then another mechanism to handle unseal
+## process must be implemented.
+unsealAutomatically: true
+
+## deployClusterRoleBinding, condition if the cluster role binding resource
+## is created during the deployment. This binding allows usage of the
+## Kubernetes Authentication method. If it is not created during deployment,
+## it must be created before deployment separately.
+deployClusterRoleBinding: true
+
+## Shelter is the feature that provides the non-backed up Vault instance
+shelter:
+  enabled: false
+
+resources:
+  vault:
+    requests:
+      memory: "400Mi"
+      cpu: "100m"
+    limits:
+      memory: "1200Mi"
+      cpu: "300m"
+  shelter:
+    requests:
+      memory: "400Mi"
+      cpu: "100m"
+    limits:
+      memory: "1200Mi"
+      cpu: "300m"
+
+# Node tolerations for the pod(s)
+# If KMS is deployed as a single replica it is recommended to use the following tolerations
+#- key: node.kubernetes.io/not-ready
+#  operator: Exists
+#  effect: NoExecute
+#  tolerationSeconds: 0
+#- key: node.kubernetes.io/unreachable
+#  operator: Exists
+#  effect: NoExecute
+#  tolerationSeconds: 0
+tolerations: []
+
+## Possible values: debug, info, error
+logLevel: "info"
+
+service:
+  ## The port where the KMS REST API is exposed
+  ## Shelter port is not configurable (8210)
+  port: 8200
+  tls:
+    ## Toggle TLS secured communication for the REST API
+    ## Requires Service Identity Provider TLS service
+    enabled: true

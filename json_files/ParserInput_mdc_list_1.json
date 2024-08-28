@@ -1,0 +1,36 @@
+{"parserList":[{
+	"inputFile":"/eniq/home/dcuser/logesh/A20200918.0000+0100-0015+0100_SubNetwork=Europe,SubNetwork=Ireland,SubNetwork=ERBS-SUBNW-1,MeContext=ieatnetsimv7038-08_LTE03ERBS00001_statsfile.xml.gz",
+	"tp":"DC_E_ERBS",
+	"setType":"Adapter",
+	"setName":"Adapter_INTF_DC_E_ERBS_mdc",
+	"actionContents":{
+		"outDir":"/eniq/home/dcuser/logesh/lterbs/",
+		"maxFilesPerRun":"10000",
+		"dublicateCheck":"true",
+		"thresholdMethod":"more",
+		"inDir":"/eniq/home/dcuser/logesh/",
+		"interfaceName":"INTF_DC_E_ERBS",
+		"ProcessedFiles.fileNameFormat":"",
+		"minFileAge":"1",
+		"baseDir":"/eniq/home/dcuser/logesh/",
+		"archivePeriod":"168",
+		"useZip":"gzip",
+		"loaderDir":"/eniq/home/dcuser/logesh/",
+		"parserType":"mdc",
+		"doubleCheckAction":"delete",
+		"ProcessedFiles.processedDir":"/eniq/archive/eniq_oss_1/lterbs/processed/",
+		"failedAction":"move",
+		"dirThreshold":"0",
+		"workers":"3",
+		"afterParseAction":"delete",
+		"MDCParser.HashData":"true",
+		"MDCParser.UseVector":"TRUE",
+		"MDCParser.readVendorIDFrom":"data",
+		"MDCParser.vendorIDMask":".*,(.*)\\=.*",
+		"MDCParser.createOwnVectorFile":"TRUE",
+		"MDCParser.hasFlexCounters":"TRUE",
+		"MDCParser.createOwnFlexFile":"TRUE",
+		"outputFormat":"0"
+	}
+}]}
+

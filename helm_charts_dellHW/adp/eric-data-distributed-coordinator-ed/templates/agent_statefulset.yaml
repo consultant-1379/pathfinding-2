@@ -1,0 +1,139 @@
+{{- if .Values.brAgent.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "eric-data-distributed-coordinator-ed.agentName" . }}
+  annotations:
+{{ include "eric-data-distributed-coordinator-ed.annotations" . | indent 2 }}
+  labels:
+{{- include "eric-data-distributed-coordinator-ed.agent.labels" . | indent 4 }}
+spec:
+  serviceName: {{ template "eric-data-distributed-coordinator-ed.agentName" . }}-headless
+  selector:
+    matchLabels:
+{{- include "eric-data-distributed-coordinator-ed.agent.selectorLabels" . | indent 6 }}
+  replicas: {{ .Values.brAgent.replicas }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type | quote }}
+  template:
+    metadata:
+      labels:
+{{- include "eric-data-distributed-coordinator-ed.agent.labels" . | indent 8 }}
+      annotations:
+        checksum/config-agent: {{ include (print $.Template.BasePath "/agentproperties-configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.brAgent.backupTypeList }}
+        {{- if (index .Values.brAgent.backupTypeList 0) }}
+        backupType: {{- template "eric-data-distributed-coordinator-ed.agent.backupTypes" . }}
+        {{- end }}
+        {{- end }}
+{{ include "eric-data-distributed-coordinator-ed.annotations" . | indent 6 }}
+{{- if .Values.deploymentTimestamp }}
+        timestamp: "{{ .Values.deploymentTimestamp }}"
+{{ end }}
+    spec:
+      serviceAccountName: {{ include "eric-data-distributed-coordinator-ed.name" . }}-sa
+      serviceAccount: ""
+      securityContext:
+        fsGroup: 0
+{{- if include "eric-data-distributed-coordinator-ed.pullSecrets" . }}
+      imagePullSecrets:
+        - name: {{ include "eric-data-distributed-coordinator-ed.pullSecrets" . | quote }}
+{{- end }}
+{{- include "eric-data-distributed-coordinator-ed.brAgentNodeSelector" . | nindent 6 }}
+      containers:
+      - name:  {{ .Chart.Name }}-agent
+        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+        image: "{{ template "eric-data-distributed-coordinator-ed.bragentImagePath" . }}"
+        resources:
+          requests:
+            memory: {{ .Values.resources.brAgent.requests.memory | quote }}
+            cpu: {{ .Values.resources.brAgent.requests.cpu | quote }}
+          limits:
+            memory: {{ .Values.resources.brAgent.limits.memory | quote }}
+            cpu: {{ .Values.resources.brAgent.limits.cpu | quote }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - all
+        env:
+        - name: LOG_LEVEL
+          value: {{ .Values.brAgent.logLevel | quote }}
+        - name: TZ
+          value: {{ include "eric-data-distributed-coordinator-ed.name" . }}
+        - name: ETCDCTL_API
+          value: "3"
+        - name: ETCDCTL_INSECURE_SKIP_TLS_VERIFY
+          value: "true"
+        - name: ACL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.security.etcd.acls.adminSecret | quote }}
+              key: {{ .Values.security.etcd.acls.rootPassword | quote }}
+        readinessProbe:
+          exec:
+            command:
+            - "pgrep"
+            - "-fl"
+            - "java"
+          initialDelaySeconds: {{ .Values.probes.brAgent.readinessProbe.InitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.probes.brAgent.readinessProbe.TimeoutSeconds }}
+        livenessProbe:
+          exec:
+            command:
+            - "pgrep"
+            - "-fl"
+            - "java"
+          initialDelaySeconds: {{ .Values.probes.brAgent.livenessProbe.InitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.probes.brAgent.livenessProbe.TimeoutSeconds }}
+        volumeMounts:
+        - name: {{ template "eric-data-distributed-coordinator-ed.agentName" . }}
+          mountPath: /bragent/{{ .Values.brAgent.properties.fileName }}
+          subPath: {{ .Values.brAgent.properties.fileName }}
+        - name: {{ template "eric-data-distributed-coordinator-ed.agentName" . }}
+          mountPath: /bragent/{{ .Values.brAgent.logging.fileName }}
+          subPath: {{ .Values.brAgent.logging.fileName }}
+        - name: backupdata
+          mountPath: /sharedData
+{{ include "eric-data-distributed-coordinator-ed.agent.secretsMountPath" . | indent 8 }}
+      volumes:
+{{ include "eric-data-distributed-coordinator-ed.agent.volumes" . | indent 6 }}
+{{ include "eric-data-distributed-coordinator-ed.agent.secretsVolumes" . | indent 6 }}
+      - name: {{ template "eric-data-distributed-coordinator-ed.agentName" . }}
+        configMap:
+          defaultMode: 0444
+          name: {{ template "eric-data-distributed-coordinator-ed.agentName" . }}
+      - name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+        configMap:
+          name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+          defaultMode: 0755
+{{- if .Values.persistence.persistentVolumeClaim.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: backupdata
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.persistentVolumeClaim.size | quote }}
+          {{- if .Values.persistence.persistentVolumeClaim.storageClassName }}
+      storageClassName: "{{ .Values.persistence.persistentVolumeClaim.storageClassName }}"
+          {{- end }}
+{{- else}}
+  volumeClaimTemplates:
+  - metadata:
+      name: backupdata
+    spec:
+      accessModes: [ {{ .Values.persistence.brAgent.backupVolume.accessMode | quote }} ]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.brAgent.backupVolume.size | quote }}
+      {{- if .Values.persistence.brAgent.backupVolume.storageClassName }}
+      storageClassName: {{ .Values.persistence.brAgent.backupVolume.storageClassName | quote }}
+      {{- end }}
+{{ end }}
+{{ end }}

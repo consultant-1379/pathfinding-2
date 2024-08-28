@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  creationTimestamp: null
+  labels:
+    app: short-lived-job
+  name: short-lived-job
+spec:
+  ttlSecondsAfterFinished: 60
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: short-lived-job
+    spec:
+      containers:
+      - image: 10.45.193.129:5000/short-lived-job:1.0
+        name: short-lived-job
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/mdc/
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "8889"
+        - name: APP_HOME
+          value: "/root/parser"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.poc.shortlivedjob.ShortlivedjobApplication"
+
+        resources:
+         limits:
+            #cpu: "1"
+         requests:
+            cpu: "500m"
+        ports:
+        # containerPort is the port exposed by the container (where nodejs express api is listening)
+        - containerPort: 8889
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/mdc
+          # this field is optional
+          type: Directory
+      restartPolicy: Never

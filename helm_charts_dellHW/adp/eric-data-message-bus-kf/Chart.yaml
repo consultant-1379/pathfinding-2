@@ -1,0 +1,7 @@
+apiVersion: v1
+description: Message Bus KF is a Message Bus based on Apache Kafka.
+maintainers:
+- email: PDLCOREAIA@pdl.internal.ericsson.com
+  name: AIA
+name: eric-data-message-bus-kf
+version: 1.11.0+33

@@ -1,0 +1,210 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+  labels:
+{{- include "eric-data-distributed-coordinator-ed.labels" . | indent 2 }}
+  annotations:
+{{- include "eric-data-distributed-coordinator-ed.annotations" . | indent 2 }}
+spec:
+  serviceName: {{ template "eric-data-distributed-coordinator-ed.name" . }}-peer
+  replicas: {{ .Values.pods.etcd.replicas }}
+  selector:
+    matchLabels:
+{{- include "eric-data-distributed-coordinator-ed.selectorLabels" . | indent 4 }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type | quote }}
+  template:
+    metadata:
+      labels:
+{{- include "eric-data-distributed-coordinator-ed.labels" . | indent 6 }}
+      annotations:
+{{- include "eric-data-distributed-coordinator-ed.annotations" . | indent 6 }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.ports.etcd.client | quote }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+{{- if .Values.deploymentTimestamp }}
+        timestamp: "{{ .Values.deploymentTimestamp }}"
+{{ end }}
+    spec:
+      serviceAccountName: {{ template "eric-data-distributed-coordinator-ed.name" . }}-sa
+      serviceAccount: ""
+      {{- if eq .Values.affinity.podAntiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - {{ template "eric-data-distributed-coordinator-ed.name" . }}
+              topologyKey: "kubernetes.io/hostname"
+        {{- else if eq .Values.affinity.podAntiAffinity  "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - {{ template "eric-data-distributed-coordinator-ed.name" . }}
+                topologyKey: "kubernetes.io/hostname"
+        {{- end }}
+      securityContext:
+        fsGroup: 0
+      initContainers:
+        - name:  init
+          image: {{ template "eric-data-distributed-coordinator-ed.dcedImagePath" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+          command: [/usr/local/bin/scripts/addMember.sh]
+          env:
+{{ include "eric-data-distributed-coordinator-ed.etcdctlParameters" . | indent 12 }}
+            - name: TZ
+              value: {{ include "eric-data-distributed-coordinator-ed.timezone" . }}
+            - name: ETCD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ETCD_INITIAL_ADVERTISE_PEER_URLS
+              value: {{ template "eric-data-distributed-coordinator-ed.initialAdvertisePeerUrl" . }}
+            - name: ETCD_DATA_DIR
+              value: {{ template "eric-data-distributed-coordinator-ed.mountPath" . }}
+            - name: ACL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.security.etcd.acls.adminSecret | quote }}
+                  key: {{ .Values.security.etcd.acls.rootPassword | quote }}
+          volumeMounts:
+          - name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+            mountPath: /usr/local/bin/scripts/
+          - name: data
+            mountPath: {{ template "eric-data-distributed-coordinator-ed.mountPath" . }}
+{{ include "eric-data-distributed-coordinator-ed.secretsMountPath" . | indent 10 }}
+      containers:
+        - name: etcd
+          image: {{ template "eric-data-distributed-coordinator-ed.dcedImagePath" . }}
+          imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+          env:
+{{ include "eric-data-distributed-coordinator-ed.etcdctlParameters" . | indent 12 }}
+            - name: TZ
+              value: {{ include "eric-data-distributed-coordinator-ed.timezone" . }}
+            - name: ETCD_INITIAL_CLUSTER_TOKEN
+              value: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+            - name: ETCD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ETCD_DATA_DIR
+              value: {{ template "eric-data-distributed-coordinator-ed.mountPath" . }}
+            - name: ETCD_LISTEN_CLIENT_URLS
+              value: {{ template "eric-data-distributed-coordinator-ed.clientUrl" . }}
+            - name: ETCD_ADVERTISE_CLIENT_URLS
+              value: {{ template "eric-data-distributed-coordinator-ed.advertiseClientUrl" . }}
+            - name: ETCD_INITIAL_ADVERTISE_PEER_URLS
+              value: {{ template "eric-data-distributed-coordinator-ed.initialAdvertisePeerUrl" . }}
+              {{- $invalidParameters := include "eric-data-distributed-coordinator-ed.validateParametersHelper" . }}
+{{- if or (.Values.security.etcd.certificates.peer.autoTls) (eq .Values.security.etcd.certificates.enabled false) }}
+            - name: ETCD_PEER_AUTO_TLS
+              value: "true"
+            - name: ETCD_LISTEN_PEER_URLS
+              value: {{ template "eric-data-distributed-coordinator-ed.peerUrl" . }}
+{{- end }}
+{{- if .Values.security.etcd.certificates.enabled  }}
+            - name: ETCD_CLIENT_CERT_AUTH
+              value: {{ .Values.security.etcd.certificates.client.clientCertAuth | quote }}
+            - name: ETCD_TRUSTED_CA_FILE
+              value: {{ template "eric-data-distributed-coordinator-ed.trustedCA" . }}
+            - name: ETCD_CERT_FILE
+              value: {{ template "eric-data-distributed-coordinator-ed.serverCert" . }}
+            - name: ETCD_KEY_FILE
+              value: {{ template "eric-data-distributed-coordinator-ed.serverKeyFile" . }}
+{{- else}}
+            - name: ACL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.security.etcd.acls.adminSecret | quote }}
+                  key: {{ .Values.security.etcd.acls.rootPassword | quote }}
+{{- end }}
+            - name: VALID_PARAMETERS
+              value: {{- include "eric-data-distributed-coordinator-ed.validateParameters" .  | required (printf "Do not specify %s in .Values.settings" $invalidParameters) -}}
+            {{ range $configName, $configValue := .Values.env.etcd }}
+            - name: {{ $configName }}
+              value: {{ $configValue | quote }}
+            {{- end }}
+          ports:
+            - name: peer
+              containerPort: {{ .Values.ports.etcd.peer }}
+            - name: client
+              containerPort: {{ .Values.ports.etcd.client }}
+          livenessProbe:
+            exec:
+              command: [/usr/local/bin/scripts/liveness.sh]
+            initialDelaySeconds: {{ .Values.probes.etcd.livenessProbe.InitialDelaySeconds }}
+            timeoutSeconds: {{ .Values.probes.etcd.livenessProbe.TimeoutSeconds }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.ports.etcd.client }}
+            initialDelaySeconds: {{ .Values.probes.etcd.readinessProbe.InitialDelaySeconds }}
+            timeoutSeconds: {{ .Values.probes.etcd.readinessProbe.TimeoutSeconds }}
+          command: [/usr/local/bin/scripts/entrypoint.sh]
+          resources:
+            requests:
+              memory: {{ .Values.resources.etcd.requests.memory | quote }}
+              cpu: {{ .Values.resources.etcd.requests.cpu | quote }}
+            limits:
+              memory: {{ .Values.resources.etcd.limits.memory | quote }}
+              cpu: {{ .Values.resources.etcd.limits.cpu | quote }}
+          volumeMounts:
+          - name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+            mountPath: /usr/local/bin/scripts/
+          - name: data
+            mountPath: {{ template "eric-data-distributed-coordinator-ed.mountPath" . }}
+{{ include "eric-data-distributed-coordinator-ed.secretsMountPath" . | indent 10 }}
+      {{- if include "eric-data-distributed-coordinator-ed.pullSecrets" . }}
+      imagePullSecrets:
+        - name: {{ template "eric-data-distributed-coordinator-ed.pullSecrets" . }}
+      {{- end }}
+      volumes:
+{{ include "eric-data-distributed-coordinator-ed.secretsVolumes" . | indent 6 }}
+      - name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+        configMap:
+          name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+          defaultMode: 0755
+{{- include "eric-data-distributed-coordinator-ed.dcedNodeSelector" . | nindent 6 }}
+{{- if .Values.persistence.persistentVolumeClaim.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.persistentVolumeClaim.size | quote }}
+          {{- if .Values.persistence.persistentVolumeClaim.storageClassName }}
+      storageClassName: "{{ .Values.persistence.persistentVolumeClaim.storageClassName }}"
+          {{- end }}
+{{- else}}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ {{ .Values.persistentVolumeClaim.etcd.accessMode | quote }} ]
+      resources:
+        requests:
+          storage: {{ .Values.persistentVolumeClaim.etcd.storage | quote }}
+          {{- if .Values.persistentVolumeClaim.etcd.storageClassName }}
+      storageClassName: "{{ .Values.persistentVolumeClaim.etcd.storageClassName }}"
+          {{- end }}
+{{- end }}

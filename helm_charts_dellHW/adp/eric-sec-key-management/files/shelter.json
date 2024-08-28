@@ -1,0 +1,48 @@
+{{- $etcdSvcPort := .Values.persistence.etcd.servicePort | default "2379" | toString -}}
+{{- $etcdSvc := (printf "https://%s:%s" .Values.persistence.etcd.serviceName $etcdSvcPort) -}}
+{
+  {{- if .Values.ui }}
+  "ui": true,
+  {{- end }}
+  "disable_mlock": true,
+  "listener":[
+    {
+      "tcp": {
+        "address": "[::]:8210",
+        "cluster_address": "[::]:8211",
+        {{- if .Values.service.tls.enabled }}
+        "tls_cert_file": "/run/secrets/tls-int-srv-cert/srvcert.pem",
+        "tls_key_file": "/run/secrets/tls-int-srv-cert/srvprivkey.pem"
+        {{- else }}
+        "tls_disable": true
+        {{- end }}
+      }
+    },
+    {
+      "tcp": {
+        "address":"127.0.0.1:8212",
+        "tls_disable": true
+      }
+    }
+  ],
+  "storage": {
+    {{- if eq .Values.persistence.type "etcd" }}
+    "etcd": {
+        "address": {{ $etcdSvc | quote }},
+        "etcd_api": "v3",
+        "sync": "false",
+        "path": "/shelter/",
+        {{- if .Values.persistence.etcd.tls.enabled }}
+        "tls_ca_file": "/kms/cacertbundle.crt",
+        "tls_cert_file": "/run/secrets/tls-client-certs/clicert.pem",
+        "tls_key_file": "/run/secrets/tls-client-certs/cliprivkey.pem",
+        {{- end }}
+        "lock_timeout": "11s"
+    }
+    {{- else }}
+    "file": {
+      "path":"/kms/data/eric-shelter"
+    }
+    {{- end }}
+  }
+}

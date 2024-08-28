@@ -1,0 +1,265 @@
+{{- $configMapName := include "eric-data-message-bus-kf.fullname" . -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "eric-data-message-bus-kf.fullname" . }}
+  labels:
+    app: {{ template "eric-data-message-bus-kf.name" . }}
+    release: {{ .Release.Name | quote }}
+{{- include "eric-data-message-bus-kf.labels" . | indent 4}}
+  annotations:
+{{- include "eric-data-message-bus-kf.productinfo" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "eric-data-message-bus-kf.name" . }}
+      release: {{ .Release.Name | quote }}
+  serviceName: {{ template "eric-data-message-bus-kf.fullname" . }}
+  podManagementPolicy: "Parallel"
+  replicas: {{ .Values.replicaCount | default 3 }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type | quote }}
+  template:
+    metadata:
+      labels:
+{{- include "eric-data-message-bus-kf.labels" . | indent 8}}
+        app: {{ template "eric-data-message-bus-kf.name" . }}
+        release: {{ .Release.Name | quote }}
+      annotations:
+      {{- include "eric-data-message-bus-kf.productinfo" . | indent 8 }}
+        {{- if .Values.jmx.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.jmx.servicePort | quote }}
+        {{- end }}
+        checksum/config: {{ .Values.configurationOverrides | toString | replace ":" "_" | replace "map[" "" | replace "]" "" | splitList " " | sortAlpha | toString |  sha256sum }}
+    spec:
+      serviceAccountName: {{ template "eric-data-message-bus-kf.fullname" . }}-sa
+      serviceAccount: ""
+      securityContext:
+        fsGroup: 0
+      {{- if  .Values.imageCredentials.registry.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imageCredentials.registry.pullSecret | quote}}
+      {{- else if .Values.global.registry.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.registry.pullSecret | quote }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector: {{ toYaml .Values.nodeSelector | trim | nindent 8 -}}
+      {{- end }}
+      {{- if eq .Values.affinity.podAntiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - {{ template "eric-data-message-bus-kf.name" . }}
+            topologyKey: "kubernetes.io/hostname"      
+      {{- else if eq .Values.affinity.podAntiAffinity  "soft" }}
+      affinity:
+        podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                    - {{ template "eric-data-message-bus-kf.name" . }}
+                topologyKey: "kubernetes.io/hostname"
+      {{- end }}
+      initContainers:
+      - name: check-zk-ready
+        {{- if .Values.imageCredentials.registry.url }}
+        image: "{{ .Values.imageCredentials.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.messagebuskf.name }}:{{ .Values.images.messagebuskf.tag }}"
+        {{- else }}
+        image: "{{ .Values.global.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.messagebuskf.name }}:{{ .Values.images.messagebuskf.tag }}"
+        {{- end }}
+        command: ['sh', '-c', 'until kafka-topics --zookeeper {{ .Values.dataCoordinator.clientServiceName }} {{ .Values.dataCoordinator.clientPort }} --list; do echo waiting for data coordinator zk ready; sleep 2; done;',
+        "chown -fR 62055:0 /etc/confluent/docker /etc/kafka /var/lib/kafka/data /etc/kafka/secrets || exit 0"]
+      containers:
+      - name: {{ .Chart.Name }}
+        {{- if .Values.imageCredentials.registry.url }}
+        image: "{{ .Values.imageCredentials.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.messagebuskf.name }}:{{ .Values.images.messagebuskf.tag }}"
+        {{- else }}
+        image: "{{ .Values.global.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.messagebuskf.name }}:{{ .Values.images.messagebuskf.tag }}"
+        {{- end }}
+        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - all
+        env:
+        - name: TZ
+          value: {{ .Values.global.timezone | quote }}
+        - name: TINI_SUBREAPER
+          value: "true"
+        - name: TINI_KILL_PROCESS_GROUP
+          value: "true"
+        - name: KAFKA_JMX_PORT
+          value: {{ .Values.jmx.kafkaPort | quote }}
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ $configMapName | quote }}
+              key: dataCoordinatorConnect
+        - name: KAFKA_LOG_DIRS
+          valueFrom:
+            configMapKeyRef:
+              name: {{ $configMapName | quote }}
+              key: logDirs
+        - name: SSL_CERTS_PROVIDER
+          value: {{ .Values.security.tls.messagebuskf.provider }}
+{{ if eq .Values.security.tls.messagebuskf.provider "sip-tls" }}
+        - name: SIPTLS_SERVER_CERT
+          value: {{ template "eric-data-message-bus-kf.servercert" . }}
+        - name: SIPTLS_CA
+          value: {{ template "eric-data-message-bus-kf.siptlsca" . }}
+        - name: CLIENT_CA
+          value: {{ template "eric-data-message-bus-kf.clientca" . }}
+{{ end }}
+        - name: KAFKA_SSL_CLIENT_AUTH
+          value: {{ template "eric-data-message-bus-kf.clientAuth" . }}
+        - name: SSL_PORT
+          value: {{ .Values.security.tls.messagebuskf.port | quote }}
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: {{ if include "eric-data-message-bus-kf.plaintext.enabled" . -}}
+          PLAINTEXT://$(MY_POD_NAME).{{ template "eric-data-message-bus-kf.fullname" . }}.$(MY_NAMESPACE):{{ template "eric-data-message-bus-kf.plaintextPort" . }},
+          {{- end -}}
+          {{- if (.Values.global.security.tls.enabled) -}}
+          SSL://$(MY_POD_NAME).{{ template "eric-data-message-bus-kf.fullname" . }}.$(MY_NAMESPACE):{{ .Values.security.tls.messagebuskf.port }}
+          {{- end -}}
+        {{ range $configName := keys .Values.configurationOverrides | sortAlpha }}
+        - name: KAFKA_{{ $configName | replace "." "_" | upper }}
+          valueFrom:
+            configMapKeyRef:
+              name: {{ $configMapName | quote }}
+              key: {{ $configName }}
+        {{- end }}
+        - name: EXTRA_ARGS
+          value: "-Dlog4j.configurationFile=file:/usr/config/log4j.properties"
+        livenessProbe:
+          tcpSocket:
+            {{- if and ( .Values.global.security.tls.enabled ) ( eq .Values.service.endpoints.messagebuskf.tls.enforced "optional" ) }}
+            port: {{ template "eric-data-message-bus-kf.plaintextPort" . }}
+            {{- else if .Values.global.security.tls.enabled }}
+            port: {{ .Values.security.tls.messagebuskf.port }}
+            {{- else }}
+            port: {{ template "eric-data-message-bus-kf.plaintextPort" . }}
+            {{- end }}
+          initialDelaySeconds: {{ .Values.livenessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.livenessProbeTimeoutSeconds }}
+          periodSeconds: {{ .Values.livenessProbePeriodSeconds }}
+        readinessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+{{- if ( .Values.global.security.tls.enabled ) }}
+              - "/usr/bin/kafka-broker-api-versions --bootstrap-server=localhost:{{ .Values.security.tls.messagebuskf.port }} --command-config /etc/kafka/readiness.properties"
+{{- else }}
+              - "/usr/bin/kafka-broker-api-versions --bootstrap-server=localhost:{{ template "eric-data-message-bus-kf.plaintextPort" . }}"
+{{- end }}
+          initialDelaySeconds: {{ .Values.readynessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.readynessProbeTimeoutSeconds }}
+          periodSeconds: {{ .Values.readynessProbePeriodSeconds }}
+        ports:
+        - containerPort: {{ template "eric-data-message-bus-kf.plaintextPort" . }}
+          name: kafka-port
+        - containerPort: {{ .Values.jmx.kafkaPort }}
+          name: jmx-port
+        resources:
+          {{- toYaml .Values.resources.messagebuskf | nindent 10 }}
+        volumeMounts:
+        - name: datadir
+          mountPath: {{ .Values.dataDirectory | quote }}
+          {{- include "eric-data-message-bus-kf.secretsMountPath" . | nindent 6 -}}
+      {{- if .Values.jmx.enabled }}
+      - name: {{ .Chart.Name }}-jmx
+        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+        {{- if .Values.imageCredentials.registry.url }}
+        image: "{{ .Values.imageCredentials.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.jmxExporter.name }}:{{ .Values.images.jmxExporter.tag }}"
+        {{- else }}
+        image: "{{ .Values.global.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.jmxExporter.name }}:{{ .Values.images.jmxExporter.tag }}"
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - all
+        env:
+        - name: TZ
+          value: {{ .Values.global.timezone | quote }}
+        - name: SERVICE_PORT
+          value: {{ .Values.jmx.servicePort | quote }}
+        - name: DEST_PORT
+          value: {{ .Values.jmx.kafkaPort | quote }}
+        - name: RULES_MODULE 
+          value: {{ .Values.jmx.rules | quote }} 
+        ports:
+        - containerPort: {{ .Values.jmx.servicePort }}
+          name: jmx-srv-port
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.jmx.servicePort }}
+          initialDelaySeconds: {{ .Values.livenessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.livenessProbeTimeoutSeconds }}
+          periodSeconds: {{ .Values.livenessProbePeriodSeconds }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.jmx.servicePort }}
+          initialDelaySeconds: {{ .Values.readynessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.readynessProbeTimeoutSeconds }}
+          periodSeconds: {{ .Values.readynessProbePeriodSeconds }}
+        resources:
+          {{- toYaml .Values.resources.jmxExporter | nindent 10 }}
+      {{- end }}
+{{- if or ( .Values.global.security.tls.enabled ) ( not .Values.persistence.persistentVolumeClaim.enabled ) ( not .Values.persistentVolumeClaim.enabled ) }}
+      volumes:
+{{- include "eric-data-message-bus-kf.volumes" . | nindent 6 -}}
+{{- end -}}
+{{- if and ( .Values.persistence.persistentVolumeClaim.enabled ) ( not .Values.persistentVolumeClaim.enabled ) }}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.persistentVolumeClaim.size | quote }}
+      {{- if .Values.persistence.persistentVolumeClaim.storageClassName | quote }}
+      storageClassName: {{ .Values.persistence.persistentVolumeClaim.storageClassName | quote }}
+      {{- end }}
+{{- end }}
+{{- if and ( .Values.persistentVolumeClaim.enabled ) ( not .Values.persistence.persistentVolumeClaim.enabled ) }}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ {{ .Values.persistentVolumeClaim.accessMode | quote }} ]
+      resources:
+        requests:
+          storage: {{ .Values.persistentVolumeClaim.storage | quote }}
+      {{- if and (ne .Values.persistentVolumeClaim.storageClassName "default") (.Values.persistentVolumeClaim.storageClassName) }}
+      storageClassName: {{ .Values.persistentVolumeClaim.storageClassName | quote }}
+      {{- end }}
+{{- end }}

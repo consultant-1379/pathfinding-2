@@ -1,0 +1,40 @@
+{{- if eq .Values.persistence.type "pvc" }}
+
+! Warning: using file-based backend is not supported nor considered production grade. Please use Distributed Coordinator ED service instead.
+
+{{- end }}
+
+Installation of "{{ .Chart.Name }}" is complete and the deployment is named "{{ .Release.Name }}" in the namespace "{{ .Release.Namespace }}".
+
+I. Verifying {{ .Chart.Name }} deployment
+
+The deployment can be manually verified using the following commands:
+
+VAULT_POD=$(kubectl get po --namespace {{ .Release.Namespace }} -l app={{ template "eric-sec-key-management.name" . }} -o go-template --template {{"'{{range .items}}{{.metadata.name}}{{end}}'"}})
+kubectl exec -n {{ .Release.Namespace }} -it $VAULT_POD -c kms -- sh -c "curl http://localhost:8202/v1/sys/health"
+
+II. CLEANUP:
+
+Delete the deployment:
+helm delete {{ .Release.Name }}
+
+{{- if eq .Values.persistence.type "pvc" }}
+
+Delete the permanent storage:
+kubectl delete pvc {{ template "eric-sec-key-management.name" . }}-pvc --namespace {{ .Release.Namespace }}
+
+{{- end }}
+
+
+####
+
+The Key Management Service (KMS) *must* be deployed with the Service Identity Provider TLS (SIP-TLS) and the Distributed Coordinator ED (DCED) in the same namespace.
+This means that in addition to the deployment prerequisites of KMS, also the prerequisites of SIP-TLS and DCED must hold, otherwise the KMS installation will fail.
+
+For further instructions, see
+*Key Management Service Deployment Guide* (1/1531-APR 201 29/2)
+*Key Management Service Troubleshooting Guide* (1/15451-APR 201 29/2)
+*Service Identity Provider TLS Service Deployment Guide* (1/1531-APR 201 36/1)
+*Service Identity Provider TLS Service Troubleshooting Guide* (1/15451-APR 201 36/1)
+*Distributed Coordinator ED Service Deployment Guide* (1/1531-CAV 101 067/1)
+

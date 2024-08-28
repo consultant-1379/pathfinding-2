@@ -1,0 +1,13 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+  annotations:
+{{- include "eric-data-distributed-coordinator-ed.annotations" . | indent 4 }}
+  labels:
+{{- include "eric-data-distributed-coordinator-ed.labels" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+  minAvailable: "55%"

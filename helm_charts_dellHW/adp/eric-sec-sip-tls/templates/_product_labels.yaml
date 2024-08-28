@@ -1,0 +1,9 @@
+{{- define "eric-sec-sip-tls.labels" -}}
+app.kubernetes.io/name: {{ template "eric-sec-sip-tls.name" . }}
+app.kubernetes.io/version: {{ template "eric-sec-sip-tls.version" . }}
+app.kubernetes.io/instance: {{ .Release.Name | quote }}
+app: {{ template "eric-sec-sip-tls.name" . }}
+chart: {{ template "eric-sec-sip-tls.chart" . }}
+release: {{ .Release.Name | quote }}
+heritage: {{ .Release.Service | quote }}
+{{- end -}}

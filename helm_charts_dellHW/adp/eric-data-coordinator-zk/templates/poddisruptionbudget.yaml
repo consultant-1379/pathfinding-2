@@ -1,0 +1,13 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "eric-data-coordinator-zk.fullname" . }}
+  annotations:
+{{- include "eric-data-coordinator-zk.productinfo" . | indent 4 }}
+  labels:
+{{- include "eric-data-coordinator-zk.labels" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "eric-data-coordinator-zk.name" . }}
+  minAvailable: {{ .Values.minAvailable | quote }}

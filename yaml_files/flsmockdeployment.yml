@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: flsmock
+  name: flsmock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flsmock
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: flsmock
+    spec:
+      containers:
+      - image: 10.45.194.77:5000/flsmock:1.0
+        name: flsmock
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/indir/flsmock
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "9777"
+        - name: APP_HOME
+          value: "/root/fls"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.flsmock.FlsmockApplication"
+
+        resources:
+         limits:
+            cpu: 500m
+         requests:
+            cpu: 200m
+        ports:
+        # containerPort is the port exposed by the container (where nodejs express api is listening)
+        - containerPort: 9777
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/indir/flsmock
+          # this field is optional
+          type: Directory

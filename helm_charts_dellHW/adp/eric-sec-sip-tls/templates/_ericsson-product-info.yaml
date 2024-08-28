@@ -1,0 +1,5 @@
+{{- define "eric-sec-sip-tls.product-info" -}}
+ericsson.com/product-name: "Service Identity Provider TLS"
+ericsson.com/product-number: "APR 201 36/1"
+ericsson.com/product-revision: "R13A"
+{{- end -}}

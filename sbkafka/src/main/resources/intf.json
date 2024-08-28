@@ -1,0 +1,13 @@
+{
+	"actionContents":{
+		"useZip":"gzip",
+		"MDCParser.HashData":"true",
+		"MDCParser.UseVector":"TRUE",
+		"MDCParser.readVendorIDFrom":"data",
+		"MDCParser.vendorIDMask":".*,(.*)\\=.*",
+		"MDCParser.createOwnVectorFile":"TRUE",
+		"MDCParser.hasFlexCounters":"TRUE",
+		"MDCParser.createOwnFlexFile":"TRUE",
+		"outputFormat":"0"
+	}
+}

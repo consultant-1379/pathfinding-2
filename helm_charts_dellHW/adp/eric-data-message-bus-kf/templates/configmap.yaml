@@ -1,0 +1,17 @@
+{{- if and .Values.global.security.tls.enabled ( eq .Values.security.tls.messagebuskf.provider "none" ) }}
+{{- fail "Specify security.tls.messagebuskf.provider when setting security.tls.messagebuskf.enabled to true" -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "eric-data-message-bus-kf.fullname" . }}
+  labels:
+{{- include "eric-data-message-bus-kf.labels" . | indent 4}}
+  annotations:
+{{- include "eric-data-message-bus-kf.productinfo" . | indent 4 }}
+data:
+  logDirs: "{{ printf "%s/%s" .Values.dataDirectory .Values.logSubPath }}"
+  dataCoordinatorConnect: "{{ template "eric-data-message-bus-kf.dataCoordinator.connect" . }}" 
+{{- range $configName, $configValue := .Values.configurationOverrides }}
+  {{ $configName }}: "{{ $configValue -}}"
+{{- end -}}

@@ -1,0 +1,392 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}-auth
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+
+---
+
+{{- $etcd      := eq .Values.persistence.type "etcd" }}
+{{- $pvc       := eq .Values.persistence.type "pvc" }}
+{{- $etcdTls   := and $etcd .Values.persistence.etcd.tls.enabled }}
+{{- $haEnabled := gt (.Values.replicas | int64) 1 }}
+{{- $shelter   := eq .Values.shelter.enabled true }}
+{{- $globals   := fromJson (include "eric-sec-key-management.global" .) -}}
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}-main
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+    checksum/config: {{ include (print $.Template.BasePath "/config-map.yaml") . | sha256sum }}
+spec:
+  replicas: {{ .Values.replicas }}
+  serviceName: {{ template "eric-sec-key-management.name" . }}-peer
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: {{ template "eric-sec-key-management.name" . }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type | quote }}
+  template:
+    metadata:
+      labels:
+        {{- include "eric-sec-key-management.labels" . | nindent 8 }}
+      annotations:
+        {{- include "eric-sec-key-management.product-info" . | nindent 8 }}
+    spec:
+      {{- if $pvc }}
+      securityContext:
+        fsGroup: 0
+      {{- end }}
+      initContainers:
+        {{- if $etcdTls }}
+        - name: "kms-ca"
+          image: {{ include "eric-sec-key-management.registryUrlPath" . }}/{{ .Values.images.ca.name }}:{{ .Values.images.ca.tag }}
+          imagePullPolicy: {{ template "eric-sec-key-management.pullPolicy" . }}
+          env:
+            - name: ETCDCTL_ENDPOINT
+              value: "{{ .Values.persistence.etcd.serviceName }}:{{ .Values.persistence.etcd.servicePort }}"
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            # For logging
+            - name: SERVICE_ID
+              value: {{ template "eric-sec-key-management.name" . }}
+            # Client certificate CN
+            - name: COMMON_NAME
+              value: {{ template "eric-sec-key-management.name" . }}
+            - name: SHELTER_ENABLED
+              value: {{ if $shelter }}"true"{{ else }}"false"{{ end }}
+          command: ["/kms/dced-configurator"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+          volumeMounts:
+            - name: bootstrap-ca
+              mountPath: "/run/secrets/tls-bootstrap-ca"
+              readOnly: true
+            - name: ca-trusted-cert
+              mountPath: "/run/secrets/tls-root-ca"
+              readOnly: true
+            - name: etcd-root-client-certs
+              mountPath: "/run/secrets/etcd-root-client-certs"
+              readOnly: true
+        {{- end }}
+        - name: "kms-mon"
+          image: {{ include "eric-sec-key-management.registryUrlPath" . }}/{{ .Values.images.unsealer.name }}:{{ .Values.images.unsealer.tag }}
+          imagePullPolicy: {{ template "eric-sec-key-management.pullPolicy" . }}
+          env:
+            - name: KMS_ADMIN_SVC_ACC_NAME
+              value: {{ template "eric-sec-key-management.name" . }}-admin
+            - name: KMS_UNSEAL_KEY_SECRET_NAME
+              value: {{ template "eric-sec-key-management.name" . }}-unseal-key
+            {{- if $shelter }}
+            - name: KMS_SHELTER_KEY_SECRET_NAME
+              value: {{ template "eric-sec-key-management.name" . }}-shelter-key
+            {{- end }}
+            # Vault process logging (3pp)
+            - name: VAULT_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            # Python script logging
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: SERVICE_NAME
+              value: {{ template "eric-sec-key-management.name" . }}
+            - name: SHELTER_ENABLED
+              value: {{ if $shelter }}"true"{{ else }}"false"{{ end }}
+            {{- if $haEnabled }}
+            # Vault storage configuration
+            - name: ETCD_HA_ENABLED
+              value: "true"
+            {{- end }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          command: ["/kms/kms_init_start.py"]
+          securityContext:
+            {{- $version := semver .Chart.Version }}
+            {{- if and $pvc .Release.IsUpgrade (eq $version.Major 2) (eq $version.Minor 8) (eq $version.Patch 0) }}
+            # Only invoked when upgrading from 2.x.0 to 2.8.0
+            runAsUser: 0
+            runAsGroup: 0
+            {{- else }}
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+            {{- end }}
+          volumeMounts:
+            {{- if $pvc }}
+            - name: vault-storage
+              mountPath: /kms/data
+            {{- end }}
+            {{- if $etcdTls }}
+            - name: ca-trusted-cert
+              mountPath: /run/secrets/tls-ca-root-cert
+              readOnly: true
+            - name: vault-client-cert
+              mountPath: "/run/secrets/tls-client-certs"
+              readOnly: true
+            {{- end }}
+            - name: vault-config
+              mountPath: /kms/etc/vault
+              readOnly: true
+            {{- if $shelter }}
+            - name: shelter-config
+              mountPath: /kms/etc/shelter
+              readOnly: true
+            {{- end }}
+            - name: admin-sa-token
+              mountPath: "/run/secrets/admin-sa-token"
+              readOnly: true
+      containers:
+        {{- if $shelter }}
+        - name: "shelter"
+          image: {{ include "eric-sec-key-management.registryUrlPath" . }}/{{ .Values.images.shelter.name }}:{{ .Values.images.shelter.tag }}
+          imagePullPolicy: {{ template "eric-sec-key-management.pullPolicy" . }}
+          command: ["/kms/start.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+          resources:
+            limits:
+              memory: {{ .Values.resources.shelter.limits.memory | quote }}
+              cpu: {{ .Values.resources.shelter.limits.cpu | quote }}
+            requests:
+              memory: {{ .Values.resources.shelter.requests.memory | quote }}
+              cpu: {{ .Values.resources.shelter.requests.cpu | quote }}
+          env:
+            # Vault process logging (3pp)
+            - name: VAULT_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            # Python script logging
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: SERVICE_NAME
+              value: {{ template "eric-sec-key-management.name" . }}
+            - name: AUTO_UNSEAL
+              value: {{ .Values.unsealAutomatically | quote }}
+            {{- if $haEnabled }}
+            # Vault storage configuration
+            - name: ETCD_HA_ENABLED
+              value: "true"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+              # The address that is advertised for client redirection
+            - name: VAULT_API_ADDR
+              {{- if .Values.service.tls.enabled }}
+              value: "https://$(POD_NAME).{{ template "eric-sec-key-management.name" . }}-peer:8210"
+              {{- else }}
+              value: "http://$(POD_NAME).{{ template "eric-sec-key-management.name" . }}-peer:8210"
+              {{- end }}
+              # The address that is advertised for request forwarding
+            - name: VAULT_CLUSTER_ADDR
+              value: "https://$(POD_NAME).{{ template "eric-sec-key-management.name" . }}-peer:8211"
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["/kms/health_check.py", "8212"]
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["/kms/readiness_seal_check.py", "{{ template "eric-sec-key-management.name" . }}-shelter-key", "8212"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 4
+          ports:
+            - name: shelter-remote
+              containerPort: 8210
+            - name: shelter-cluster
+              containerPort: 8211
+            - name: shelter-local
+              containerPort: 8212
+          volumeMounts:
+            {{- if $pvc }}
+            - name: vault-storage
+              mountPath: /kms/data
+            {{- end }}
+            {{- if .Values.service.tls.enabled }}
+            - name: vault-cert
+              mountPath: /run/secrets/tls-int-srv-cert
+              readOnly: true
+            {{- end }}
+            {{- if $etcdTls }}
+            - name: ca-trusted-cert
+              mountPath: /run/secrets/tls-ca-root-cert
+              readOnly: true
+            - name: vault-client-cert
+              mountPath: "/run/secrets/tls-client-certs"
+              readOnly: true
+            {{- end }}
+            - name: shelter-config
+              mountPath: /kms/etc/vault
+              readOnly: true
+        {{- end }}
+        - name: "kms"
+          image: {{ include "eric-sec-key-management.registryUrlPath" . }}/{{ .Values.images.vault.name }}:{{ .Values.images.vault.tag }}
+          imagePullPolicy: {{ template "eric-sec-key-management.pullPolicy" . }}
+          command: ["/kms/start.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+          resources:
+            limits:
+              memory: {{ .Values.resources.vault.limits.memory | quote }}
+              cpu: {{ .Values.resources.vault.limits.cpu | quote }}
+            requests:
+              memory: {{ .Values.resources.vault.requests.memory | quote }}
+              cpu: {{ .Values.resources.vault.requests.cpu | quote }}
+          env:
+            # Vault process logging (3pp)
+            - name: VAULT_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            # Python script logging
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: SERVICE_NAME
+              value: {{ template "eric-sec-key-management.name" . }}
+            - name: AUTO_UNSEAL
+              value: {{ .Values.unsealAutomatically | quote }}
+            {{- if $haEnabled }}
+            # Vault storage configuration
+            - name: ETCD_HA_ENABLED
+              value: "true"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+              # The address that is advertised for client redirection
+            - name: VAULT_API_ADDR
+              {{- if .Values.service.tls.enabled }}
+              value: "https://$(POD_NAME).{{ template "eric-sec-key-management.name" . }}-peer:8200"
+              {{- else }}
+              value: "http://$(POD_NAME).{{ template "eric-sec-key-management.name" . }}-peer:8200"
+              {{- end }}
+              # The address that is advertised for request forwarding
+            - name: VAULT_CLUSTER_ADDR
+              value: "https://$(POD_NAME).{{ template "eric-sec-key-management.name" . }}-peer:8201"
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["/kms/health_check.py", "8202"]
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["/kms/readiness_seal_check.py", "{{ template "eric-sec-key-management.name" . }}-unseal-key", "8202"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 4
+          ports:
+            - name: remote
+              containerPort: 8200
+            - name: cluster
+              containerPort: 8201
+            - name: local
+              containerPort: 8202
+          volumeMounts:
+            {{- if $pvc }}
+            - name: vault-storage
+              mountPath: /kms/data
+            {{- end }}
+            {{- if .Values.service.tls.enabled }}
+            - name: vault-cert
+              mountPath: /run/secrets/tls-int-srv-cert
+              readOnly: true
+            {{- end }}
+            {{- if $etcdTls }}
+            - name: ca-trusted-cert
+              mountPath: /run/secrets/tls-ca-root-cert
+              readOnly: true
+            - name: vault-client-cert
+              mountPath: "/run/secrets/tls-client-certs"
+              readOnly: true
+            {{- end }}
+            - name: vault-config
+              mountPath: /kms/etc/vault
+              readOnly: true
+      {{- if include "eric-sec-key-management.pullSecrets" . }}
+      imagePullSecrets:
+        - name: {{ template "eric-sec-key-management.pullSecrets" . }}
+      {{- end }}
+      volumes:
+      - name: vault-config
+        configMap:
+          name: {{ template "eric-sec-key-management.name" . }}-config
+          items:
+            - key: 'vault.json'
+              path: 'vault.json'
+      {{- if $shelter }}
+      - name: shelter-config
+        configMap:
+          name: {{ template "eric-sec-key-management.name" . }}-config
+          items:
+            - key: 'shelter.json'
+              path: 'vault.json'
+      {{- end }}
+      - name: admin-sa-token
+        secret:
+          optional: true
+          secretName: {{ template "eric-sec-key-management.name" . }}-admin-token
+      {{- if $pvc }}
+      - name: vault-storage
+        persistentVolumeClaim:
+          claimName: {{ template "eric-sec-key-management.name" . }}-pvc
+      {{- end }}
+      {{- if .Values.service.tls.enabled }}
+      - name: vault-cert
+        secret:
+          secretName: {{ template "eric-sec-key-management.name" . }}-kms-cert
+      {{- end }}
+      {{- if $etcdTls }}
+      - name: ca-trusted-cert
+        secret:
+          optional: true
+          secretName: {{ .Values.persistence.etcd.tls.trustedCaSecret | quote }}
+      - name: etcd-root-client-certs
+        secret:
+          secretName: {{ .Values.persistence.etcd.tls.credSecret }}
+      - name: vault-client-cert
+        secret:
+          secretName: {{ template "eric-sec-key-management.name" . }}-client-cert
+      - name: bootstrap-ca
+        secret:
+          optional: true
+          secretName: eric-sec-sip-tls-bootstrap-ca-cert
+      {{- end }}
+      {{- if (or .Values.nodeSelector $globals.nodeSelector) }}
+      nodeSelector: {{- include "eric-sec-key-management.nodeSelector" . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ template "eric-sec-key-management.name" . }}-auth
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

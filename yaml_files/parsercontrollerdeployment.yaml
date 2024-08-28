@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: parsercontroller
+  name: parsercontroller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: parsercontroller
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: parsercontroller
+    spec:
+      #serviceAccountName: pc-sa
+      containers:
+      - image: 10.45.193.129:5000/parsercontroller:1.0
+        name: parsercontroller
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/parsercontroller/
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "8009"
+        - name: APP_HOME
+          value: "/root/parsercontroller"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.parsercontroller.ParsercontrollerApplication"
+
+        resources:
+         limits:
+            #cpu: "1"
+         requests:
+            cpu: 1
+        ports:
+        - containerPort: 8009
+      - name: pcsidecar
+        image: 10.45.193.129:5000/pcsidecar:1.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/parsercontroller
+          # this field is optional
+          type: Directory

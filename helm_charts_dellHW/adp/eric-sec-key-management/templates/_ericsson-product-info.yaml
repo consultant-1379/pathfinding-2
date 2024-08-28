@@ -1,0 +1,5 @@
+{{- define "eric-sec-key-management.product-info" -}}
+ericsson.com/product-name: "Key Management Service"
+ericsson.com/product-number: "APR 201 29/2"
+ericsson.com/product-revision: "R11A"
+{{- end -}}

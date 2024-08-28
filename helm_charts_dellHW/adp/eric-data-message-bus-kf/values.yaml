@@ -1,0 +1,252 @@
+# Default values for eric-message-bus-kf
+
+# If specified, allows the overriding of the name of all Kubernetes resources in the Message Bus KF service
+#fullnameOverride:
+
+# The number of brokers
+replicaCount: 3
+
+updateStrategy:
+  # Update Strategy
+  type: "RollingUpdate"
+
+global:
+  registry:
+     # Global image registry
+     url: armdocker.rnd.ericsson.se
+     # The Secret resource name to use for authenticating towards docker registry when pulling the image
+     #pullSecret: armdocker_secret_name
+  #timezone setting.
+  timezone: UTC
+  security:
+    tls:
+      enabled: false
+
+productInfo:
+  # R-State of the product. R State should match helm chart version (3.1.0 -> R2A)
+  # To automate it when packaging the helm chart rstate can be generated
+  # and below value replaced with correct R-State
+  rstate: "R12A"
+
+imageCredentials:
+  registry:
+    # Docker registry url. Overrides global.registry.url
+    url:
+    # The Secret resource name to use for authenticating towards docker registry when pulling the image
+    #pullSecret: armdocker_secret_name
+
+  # Docker repository path
+  repoPath: "proj-adp-message-bus-kf-drop"
+
+images:
+  messagebuskf:
+    # Docker image name of the Message Bus KF image
+    name: eric-data-message-bus-kf
+    # Docker image tag
+    tag: "1.11.0-33"
+  jmxExporter:
+    # Docker image name of the JMX exporter image
+    name: eric-data-message-bus-kf-jmx-exporter
+    # The image tag of the jmx exporter
+    tag: 1.10.0-4
+
+# Message Bus KF container images pull Policy
+imagePullPolicy: "Always"
+
+resources:
+  messagebuskf:
+    requests:
+      # This is the min CPU setting at startup
+      cpu: "1"
+      # This is the min Memory setting at startup
+      memory: "1Gi"
+    limits:
+      # This the maximum cpu setting that can be requested
+      cpu: "2"
+      # This is the max memory setting that can be requested
+      memory: "6Gi"
+  jmxExporter:
+    requests:
+      # CPU resources
+      cpu: "500m"
+      # Memory resources. This should be twice as big as the heap
+      memory: "512Mi"
+    limits:
+      # CPU resources limit
+      cpu: "1"
+      # Memory resources limit. This should be twice as big as the heap
+      memory: "1Gi"
+
+jmx:
+  # If set to true, enables the monitoring of Java Management Extensions (JMX) using the PM Server Microservice. To ensure the monitoring metrics can be viewed, deploy the PM Server service
+  enabled: false
+  # Message Bus KF provides JMX metrics on this port
+  kafkaPort: 7072
+  # JMX exporter scrapes the metrics and makes them available in text format, exposed on this port
+  servicePort: 9072
+  # Uses default rule set in JMX container which allows scraping of all metrics in a default format
+  rules: "default"
+
+# The directory where Message Bus KF log data is kept
+dataDirectory: "/opt/kafka/data"
+logSubPath: "logs"
+# Can specify labels for directing node assignment. Format - label: value
+nodeSelector: {}
+
+# sets inter-pod anti-affinity , values supported 'Soft/Hard'.
+affinity:
+  podAntiAffinity: "soft"
+
+# The number of seconds that kubelet waits before performing the first health check probe
+livenessProbeInitialDelaySeconds: 60
+
+# The timeout for the health check
+livenessProbeTimeoutSeconds: 5
+
+# The interval for the health check
+livenessProbePeriodSeconds: 30
+
+# Number of seconds that kubelet waits before performing the first service availability check probe
+readynessProbeInitialDelaySeconds: 5
+
+# Timeout for the service availability check
+readynessProbeTimeoutSeconds: 5
+
+# The interval for the availability check
+readynessProbePeriodSeconds: 10
+
+dataCoordinator:
+   # The name of the Data Coordinator ZK service
+   clientServiceName: "eric-data-coordinator-zk"
+   # The port that the Data Coordinator ZK service listens on
+   clientPort: "2181"
+
+persistence:
+  persistentVolumeClaim:
+    # The storage class to use for the persistent volume. Supported storage classes are: network-block
+    storageClassName: "hostpath"
+    # Size of the persistent volume
+    size: "2Gi"
+    # The persistent volume access mode
+    # A Boolean variable indicating whether the Helm chart uses a persistent volume (true) or whether it uses storage from the node (false)
+    enabled: false
+
+persistentVolumeClaim:
+  # The storage class to use for the persistent volume. Supported storage classes are: erikube-rbd, erikube-cinder and rook-block
+  storageClassName: "hostpath"
+  # Size of the persistent volume
+  storage: "2Gi"
+  # The persistent volume access mode
+  accessMode: "ReadWriteOnce"
+  # A Boolean variable indicating whether the Helm chart uses a persistent volume (true) or whether it uses storage from the node (false)
+  enabled: true
+
+security:
+  tls:
+    messagebuskf:
+      # The port that Message Bus KF listens and accepts tls connections on
+      port: 9093
+      # provider for tls solution, supported values: none, edaTls, sip-tls
+      provider: "sip-tls"
+      #edaTls:  
+      # name of the secret that hold the keystore/truststore and their credentials
+      # secretName: eric-data-message-bus-kf-store-secret
+
+  plaintext:
+    messagebuskf:
+      # The port that Message Bus KF listens and accepts plaintext connections on
+      port: 9092
+
+service:
+   endpoints:
+     messagebuskf:
+        tls:
+           enforced: "optional"
+           # For verifying client certs - required/optional
+           verifyClientCertificate: "required"
+           servcertTimeToLive: 3600
+           servcertRenewalLeadTime: 3000
+
+# Configuration Overrides. Specify any Kafka settings you would like set on the StatefulSet
+# here in map format, as defined in the official Apache Kafka docs.
+
+configurationOverrides:
+  # Specify which version of the inter-broker protocol will be used. It allows to run brokers with different versions in the same MBKF cluster. This avoids downtime during upgrade. Set this to '1.0' for full backwards compatibility to MBKF releases before 1.6.0.
+  "inter.broker.protocol.version": '1.0'
+
+  # The max time that the client waits to establish a connection to zookeeper.
+  "zookeeper.connection.timeout.ms": 30000
+
+  # Zookeeper session timeout.
+  "zookeeper.session.timeout.ms": 30000
+
+  # The default replication factor for automatically created topics. Topic creation will fail if the cluster size is lower than this replication factor
+  "default.replication.factor": 3
+
+  # The replication factor for the offsets topic (set higher to ensure availability)
+  "offsets.topic.replication.factor": 3
+
+  # The number of partitions for the offset commit topic (should not change after deployment)
+  "offsets.topic.num.partitions": 24
+
+  # The offsets topic segment bytes should be kept relatively small in order to facilitate faster log compaction and cache loads
+  "offsets.topic.segment.bytes": "1048576"
+
+  # The number of hours to keep a log file before deleting it
+  "log.retention.hours": 16
+
+  # The default cleanup policy for segments beyond the retention window. Valid policies are: delete and compact
+  "log.cleanup.policy": "delete"
+
+  # Enable the log cleaner process to run on the server
+  "log.cleaner.enable": "true"
+
+  # The minimum time a message will remain uncompacted in the log
+  "log.cleaner.min.compaction.lag.ms": 0
+
+  # The maximum size of a single log file in bytes
+  "log.segment.bytes": "10485760"
+
+  # A string of extra JVM options to pass to the broker. For instance, garbage collector or heap settings
+  "jvm.performance.opts" : "-server -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent -Djava.awt.headless=true"
+  
+  # Specifies the minimum number of replicas that must acknowledge a write for the write to be considered successful. 
+  # If this minimum cannot be met, then the producer will raise an exception 
+  "min.insync.replicas": 2
+
+  # The transaction topic segment bytes should be kept relatively small in order to facilitate faster log compaction and cache loads. 
+  "transaction.state.log.segment.bytes": "1048576"
+
+  # The number of partitions for the transaction topic (should not change after deployment). 
+  "transaction.state.log.num.partitions": 24
+  
+  # Specify the root log level.Sets verbose if root log level set as DEBUG
+  "log4j.root.loglevel": "INFO"
+
+  # Specifiy additional root loggers.
+  "log4j.loggers": ""
+   
+  # Add additional appenders for log4j.  
+  "log4j.appenders": ""
+  
+  # name of the keystore file
+  ssl.keystore.filename: "server.keystore.jks"
+
+  # file containing the password of the private key
+  ssl.key.credentials: "keypw"
+
+  # file containing the password for the Keystore
+  ssl.keystore.credentials: "keystorepw"
+
+  #name of the truststore file
+  ssl.truststore.filename: "server.truststore.jks"
+
+  # file containing the password for the Truststore
+  ssl.truststore.credentials: "truststorepw"
+
+  # custom property to enable inter-broker SSL channel
+  inter.broker.ssl.enabled: "true"
+
+  # The endpoint identification algorithm to validate server hostname using server certificate. Set to "" to disable hostname verification
+  ssl.endpoint.identification.algorithm: ""
+

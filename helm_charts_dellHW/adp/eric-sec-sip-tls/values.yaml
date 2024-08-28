@@ -1,0 +1,117 @@
+## Default values for eric-sec-sip-tls.
+## This is a YAML-formatted file.
+## Declare variables to be passed into your templates.
+
+#global:
+  ## pullSecret, the secret resource name used for authenticating towards docker registry where images are pulled
+  #pullSecret:
+  #registry:
+    ## Docker registry url
+    #url: armdocker.rnd.ericsson.se
+    ## imagePullPolicy, desired policy under which condition the images are pulled from registry
+    #imagePullPolicy: IfNotPresent
+    ## pullSecret, is deprecated and removed in favor of global.pullSecret
+    #pullSecret:
+
+imageCredentials:
+  repoPath: proj-common-assets-cd/security
+  ## pullSecret, the secret resource name used for authenticating towards docker registry where images are pulled
+  ## overrides the global value when set
+  #pullSecret: null
+  ## pullPolicy, is deprecated and removed in favor of imageCredentials.registry.imagePullPolicy
+  pullPolicy: IfNotPresent
+  registry:
+    ## url, service specific Docker registry url, overrides the global value when set
+    url: null
+    ## pullSecret, is deprecated and removed in favor of imageCredentials.pullSecret
+    #pullSecret: null
+    ## imagePullPolicy, service specific policy, overrides the global value when set
+    #imagePullPolicy: null
+
+updateStrategy:
+  type: RollingUpdate
+
+images:
+  sip:
+    name: eric-sec-sip-tls-main
+    tag: 1.12.0-12
+
+  init:
+    name: eric-sec-sip-tls-init
+    tag: 1.12.0-12
+
+  supervisor:
+    name: eric-sec-sip-tls-supervisor
+    tag: 1.12.0-12
+
+resources:
+  sip:
+    requests:
+      memory: "200Mi"
+      cpu: "100m"
+    limits:
+      memory: "400Mi"
+      cpu: "3000m"
+
+tolerations:
+  - key: node.kubernetes.io/not-ready
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 0
+  - key: node.kubernetes.io/unreachable
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 0
+
+serverCertificate:
+  ## The time in seconds that certificates are valid
+  validLifetimeSeconds: 3600
+
+  ## The certificate renewal threshold as a ratio relative to validLifetimeSeconds
+  ## The renewal time is calculated by multiplying validLifetimeSeconds by renewalThresholdRatio
+  ## E.g. with default values the certificate would be renewed after 3240s (3600s*0.9) at the latest
+  renewalThresholdRatio: 0.9
+
+clientCertificate:
+  ## The time in seconds that certificates are valid
+  validLifetimeSeconds: 3600
+
+  ## The certificate renewal threshold as a ratio relative to validLifetimeSeconds
+  ## The renewal time is calculated by multiplying validLifetimeSeconds by renewalThresholdRatio
+  ## E.g. with default values the certificate would be renewed after 3240s (3600s*0.9) at the latest
+  renewalThresholdRatio: 0.9
+
+internalCertificate:
+  ## The time in seconds that certificates are valid
+  validLifetimeSeconds: 3600
+
+  ## The certificate renewal threshold as a ratio relative to validLifetimeSeconds
+  ## The renewal time is calculated by multiplying validLifetimeSeconds by renewalThresholdRatio
+  ## E.g. with default values the certificate would be renewed after 3240s (3600s*0.9) at the latest
+  renewalThresholdRatio: 0.9
+
+  ## The Kubernetes cluster domain that gets populated to Subject Alternative Name
+  clusterDomain: cluster.local
+
+## Possible values: debug, info, error
+logLevel: info
+
+keyManagement:
+  serviceAccountNameForCredentials: eric-sec-key-management-admin
+  hostname: eric-sec-key-management
+  port: 8200
+
+## Key Management db back end details needed for the bootstrap
+etcd:
+  hostname: eric-data-distributed-coordinator-ed
+  port: 2379
+  peerCn: eric-data-distributed-coordinator-ed-peer
+
+## Message bus for fault indication
+kafka:
+  hostname: eric-data-message-bus-kf
+  port: 9092
+  tls:
+    enabled: false
+    ## Hostname verification not possible in MB KF 1.9.0
+    verifyHostname: false

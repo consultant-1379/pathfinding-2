@@ -1,0 +1,22 @@
+{{- if false -}}
+# Sanity checks for input values.
+# In a nutshell:
+# The Helm template function 'required' will throw an error if the parameter given to it cannot be found.
+# This essentially means it will always throw this error because 'nonExistent' never exists.
+# However, the whole check is only rendered when the 'if' condition is true, otherwise it is skipped.
+# I.e., the below lines can be read as: 'if <boolean expression> fails, throw error'
+
+# Similar safety guards are present in the code as well.
+{{- end -}}
+
+{{- if lt (int64 .Values.serverCertificate.validLifetimeSeconds) 180 -}}
+{{- required "validLifetimeSeconds must be greater than 180 (the secret propagation in k8s)" .Values.nonExistent -}}
+{{- end -}}
+
+{{- if lt (float64 .Values.serverCertificate.renewalThresholdRatio) 0.0 -}}
+{{- required "renewalThresholdRatio must be greater than 0.0" .Values.nonExistent -}}
+{{- end -}}
+
+{{- if gt (float64 .Values.serverCertificate.renewalThresholdRatio) 1.0 -}}
+{{- required "renewalThresholdRatio must be smaller than 1.0" .Values.nonExistent -}}
+{{- end -}}

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+spec:
+{{- if .Values.global -}}
+{{- if .Values.global.internalIPFamily }}
+  ipFamily: {{.Values.global.internalIPFamily }}
+{{- end }}
+{{- end }}
+  selector:
+    app: {{ template "eric-sec-key-management.name" . }}
+  ports:
+    - name: https-kms
+      targetPort: remote
+      port: {{ .Values.service.port }}
+    {{- if .Values.shelter.enabled }}
+    - name: https-shelter
+      targetPort: shelter-remote
+      port: 8210
+    {{- end }}

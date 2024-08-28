@@ -1,0 +1,106 @@
+{{- if .Values.brAgent.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "eric-data-coordinator-zk.agentName" . }}
+  annotations:
+    {{- if .Values.brAgent.backupTypeList }}
+    {{- if (index .Values.brAgent.backupTypeList 0) }}
+    backupType: {{- template "eric-data-coordinator-zk.agent.backupTypes" . }}
+    {{- end }}
+    {{- end }}
+{{ include "eric-data-coordinator-zk.productinfo" . | indent 4 }}
+  labels:
+{{- include "eric-data-coordinator-zk.agent.labels" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+{{- include "eric-data-coordinator-zk.agent.selectorLabels" . | indent 8 }}
+  serviceName: {{ template "eric-data-coordinator-zk.agentName" . }}
+  replicas: {{ .Values.brAgent.replicas }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type | quote }}
+  template:
+    metadata:
+      labels:
+{{- include "eric-data-coordinator-zk.agent.labels" . | indent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/agentproperties-configmap.yaml") . | sha256sum }}
+{{ include "eric-data-coordinator-zk.productinfo" . | indent 8 }}
+    spec:
+      serviceAccountName: {{ template "eric-data-coordinator-zk.fullname" . }}-sa
+      serviceAccount: ""
+      securityContext:
+        fsGroup: 0
+      {{- if  .Values.imageCredentials.registry.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imageCredentials.registry.pullSecret | quote }}
+      {{- else if .Values.global.registry.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.registry.pullSecret | quote }}
+      {{- end }}
+      containers:
+      - name:  {{ .Chart.Name }}-agent
+        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+        {{- if .Values.imageCredentials.registry.url }}
+        image: "{{ .Values.imageCredentials.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.brAgent.name }}:{{ .Values.images.brAgent.tag }}"
+        {{- else }}
+        image: "{{ .Values.global.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.brAgent.name }}:{{ .Values.images.brAgent.tag }}"
+        {{- end }}
+        resources:
+          requests:
+            memory: {{ .Values.resources.brAgent.requests.memory | quote }}
+            cpu: {{ .Values.resources.brAgent.requests.cpu | quote }}
+          limits:
+            memory: {{ .Values.resources.brAgent.limits.memory | quote }}
+            cpu: {{ .Values.resources.brAgent.limits.cpu | quote }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - all
+        env:
+        - name: TZ
+          value: {{ .Values.global.timezone | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.brAgent.logLevel | quote }}
+        readinessProbe:
+          exec:
+            command:
+            - "pgrep"
+            - "-fl"
+            - "java"
+          initialDelaySeconds: {{ .Values.readinessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.readinessProbeTimeoutSeconds }}
+        livenessProbe:
+          exec:
+            command:
+            - "pgrep"
+            - "-fl"
+            - "java"
+          initialDelaySeconds: {{ .Values.livenessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.livenessProbeTimeoutSeconds }}
+        volumeMounts:
+{{ include "eric-data-coordinator-zk.agent.volumeMounts" . | indent 8 }}
+      volumes:
+{{ include "eric-data-coordinator-zk.agent.volumes" . | indent 6 }}  
+{{- if .Values.nodeSelector.brAgent}}
+      nodeSelector: {{ toYaml .Values.nodeSelector.brAgent | trim | nindent 8 -}}
+{{- end }}
+{{- if not .Values.persistence.persistentVolumeClaim.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: backupdir
+    spec:
+      accessModes: [ {{ .Values.persistantVolumeClaim.accessModes | quote }} ]
+      resources:
+        requests:
+          storage: {{ .Values.persistantVolumeClaim.storage | quote }}
+      {{- if and (ne .Values.persistantVolumeClaim.storageClassName "default") (.Values.persistantVolumeClaim.storageClassName) }}
+      storageClassName: {{ .Values.persistantVolumeClaim.storageClassName | quote }}
+      {{- end }}
+{{ end }}
+{{ end }}

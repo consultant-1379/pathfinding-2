@@ -1,0 +1,216 @@
+{{- $globals := fromJson (include "eric-sec-sip-tls.global" .) -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ template "eric-sec-sip-tls.name" . }}-main"
+  labels:
+    {{- include "eric-sec-sip-tls.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-sip-tls.product-info" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "{{ template "eric-sec-sip-tls.name" . }}"
+  strategy:
+    type: {{ .Values.updateStrategy.type | quote }}
+  template:
+    metadata:
+      labels:
+        {{- include "eric-sec-sip-tls.labels" . | nindent 8 }}
+      annotations:
+        {{- include "eric-sec-sip-tls.product-info" . | nindent 8 }}
+        checksum/config: {{ include (print $.Template.BasePath "/config-map.yaml") . | sha256sum }}
+    spec:
+      initContainers:
+        - name: "sip-tls-init"
+          image: {{ include "eric-sec-sip-tls.registryUrlPath" . }}/{{ .Values.images.init.name }}:{{ .Values.images.init.tag }}
+          imagePullPolicy: {{ template "eric-sec-sip-tls.pullPolicy" . }}
+          command: ["/sip-tls/init_kms.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+          env:
+            - name: SERVICE_ACCOUNT_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: SERVICE_NAME
+              value: {{ template "eric-sec-sip-tls.name" . }}
+          volumeMounts:
+            - name: sip-tls-config
+              mountPath: /sip-tls/config
+              readOnly: true
+      containers:
+        - name: "sip-tls"
+          image: {{ include "eric-sec-sip-tls.registryUrlPath" . }}/{{ .Values.images.sip.name }}:{{ .Values.images.sip.tag }}
+          imagePullPolicy: {{ template "eric-sec-sip-tls.pullPolicy" . }}
+          command: ["/sip-tls/sip_tls.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+          resources:
+            limits:
+              memory: {{ .Values.resources.sip.limits.memory | quote}}
+              cpu: {{ .Values.resources.sip.limits.cpu | quote }}
+            requests:
+              memory: {{ .Values.resources.sip.requests.memory | quote }}
+              cpu: {{ .Values.resources.sip.requests.cpu | quote }}
+          livenessProbe:
+            exec:
+              command: ["/sip-tls/sip-tls-alive.sh"]
+            # In line with the retry-wrapper parameters in k8s_utils and vault_utils
+            # I.e. retry-wrapper has time to perform retries before liveness probe
+            # kills the container.
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 30
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["/sip-tls/sip-tls-ready.sh"]
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          env:
+            - name: SERVICE_ACCOUNT_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: SERVICE_NAME
+              value: {{ template "eric-sec-sip-tls.name" . }}
+          volumeMounts:
+            - name: sip-tls-config
+              mountPath: /sip-tls/config
+              readOnly: true
+        - name: "sip-tls-supervisor"
+          image: {{ include "eric-sec-sip-tls.registryUrlPath" . }}/{{ .Values.images.supervisor.name }}:{{ .Values.images.supervisor.tag }}
+          imagePullPolicy: {{ template "eric-sec-sip-tls.pullPolicy" . }}
+          command: ["/sip-tls-supervisor/sip_tls_supervisor.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+          resources:
+            limits:
+              memory: {{ .Values.resources.sip.limits.memory | quote}}
+              cpu: {{ .Values.resources.sip.limits.cpu | quote }}
+            requests:
+              memory: {{ .Values.resources.sip.requests.memory | quote }}
+              cpu: {{ .Values.resources.sip.requests.cpu | quote }}
+          livenessProbe:
+            exec:
+              command: ["/sip-tls-supervisor/sip-tls-supervisor-alive.sh"]
+            # Must be aligned with the internal watch dog certificate initial delay.
+            initialDelaySeconds: {{ template "eric-sec-sip-tls.supervisor.probeInitialDelaySeconds" . }}
+            timeoutSeconds: 10
+            periodSeconds: {{ template "eric-sec-sip-tls.supervisor.probePeriodSeconds" . }}
+            failureThreshold: 5
+          env:
+            - name: SERVICE_ACCOUNT_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: SERVICE_NAME
+              value: {{ template "eric-sec-sip-tls.name" . }}
+            - name: KMS_HOSTNAME
+              value: {{ .Values.keyManagement.hostname | quote }}
+            - name: KMS_PORT
+              value: {{ .Values.keyManagement.port | quote }}
+            - name: DCED_HOSTNAME
+              value: {{ .Values.etcd.hostname | quote }}
+            - name: DCED_PORT
+              value: {{ .Values.etcd.port | quote }}
+            - name: AH_FI_TOPIC
+              value: "AdpFaultIndication"
+            - name: KAFKA_HOSTNAME
+              value: {{ .Values.kafka.hostname | quote }}
+            - name: KAFKA_PORT
+              value: {{ .Values.kafka.port | quote }}
+            - name: KAFKA_TLS
+              {{- if .Values.kafka.tls.enabled }}
+              value: "true"
+              {{- else }}
+              value: "false"
+              {{- end }}
+            - name: KAFKA_VERIFY_HOSTNAME
+              {{ if .Values.kafka.tls.verifyHostname }}
+              value: "true"
+              {{- else }}
+              value: "false"
+              {{- end }}
+            - name: KAFKA_VERSION
+              # faultIndication schema version
+              value: "0.2"
+            - name: RECOVERY_THRESHOLD
+              value: "{{ template "eric-sec-sip-tls.supervisor.recoveryThreshold" . }}"
+          volumeMounts:
+            - name: sip-tls-supervisor-wdc-mount
+              mountPath: /sip-tls-supervisor/wdc
+            {{- if .Values.kafka.tls.enabled }}
+            - name: kafka-client-cert
+              mountPath: /run/secrets/kafka-client-cert
+            {{- end }}
+            {{- if .Values.etcd.hostname }}
+            - name: dced-client-cert
+              mountPath: /run/secrets/dced-client-cert
+            {{- end }}
+            - name: trusted-root-cert
+              mountPath: /run/secrets/trusted-root-cert
+      {{- if include "eric-sec-sip-tls.pullSecrets" . }}
+      imagePullSecrets:
+        - name: {{ template "eric-sec-sip-tls.pullSecrets" . }}
+      {{- end }}
+      volumes:
+      - name: sip-tls-config
+        configMap:
+          name: "{{ template "eric-sec-sip-tls.name" . }}-config"
+      - name: sip-tls-supervisor-wdc-mount
+        secret:
+          optional: true
+          secretName: {{ template "eric-sec-sip-tls.name" . }}-wdc-certs
+      {{- if .Values.kafka.tls.enabled }}
+      - name: kafka-client-cert
+        secret:
+          optional: true
+          secretName: {{ template "eric-sec-sip-tls.name" . }}-kafka-client-cert
+      {{- end }}
+      - name: trusted-root-cert
+        secret:
+          optional: true
+          secretName: {{ template "eric-sec-sip-tls.name" . }}-trusted-root-cert
+      {{- if .Values.etcd.hostname }}
+      - name: dced-client-cert
+        secret:
+          optional: true
+          secretName: {{ template "eric-sec-sip-tls.name" . }}-dced-client-cert
+      {{- end }}
+      terminationGracePeriodSeconds: 5
+      {{- if (or .Values.nodeSelector $globals.nodeSelector) }}
+      nodeSelector: {{- include "eric-sec-sip-tls.nodeSelector" . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: "{{ template "eric-sec-sip-tls.name" . }}-service-account"
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

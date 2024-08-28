@@ -1,0 +1,26 @@
+{{- if and ( .Values.global.security.tls.enabled ) ( eq .Values.security.tls.messagebuskf.provider "sip-tls" ) }}
+apiVersion: siptls.sec.ericsson.com/v1alpha1
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-data-message-bus-kf.fullname" . }}-server-cert
+  labels:
+{{- include "eric-data-message-bus-kf.labels" . | indent 4}}
+  annotations:
+{{- include "eric-data-message-bus-kf.productinfo" . | indent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-data-message-bus-kf.server.cert.secret" . }}
+    certificateName: srvcert.pem
+    privateKeyName: srvprivkey.pem
+  certificate:
+    subject:
+      cn: {{ template "eric-data-message-bus-kf.fullname" . }}
+    subjectAlternativeName:
+      dns: {{ include "eric-data-message-bus-kf.dns" . }}
+    extendedKeyUsage:
+      tlsClientAuth: true
+      tlsServerAuth: true
+    validity:
+      overrideTtl: {{ .Values.service.endpoints.messagebuskf.tls.servcertTimeToLive }}
+      overrideLeadTime: {{ .Values.service.endpoints.messagebuskf.tls.servcertRenewalLeadTime }}
+{{- end -}}

@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "eric-data-coordinator-zk.agentName" . }}
+  annotations:
+{{ include "eric-data-coordinator-zk.productinfo" . | indent 4 }}
+  labels:
+    chart: {{ template "eric-data-coordinator-zk.chart" . }}
+{{- include "eric-data-coordinator-zk.agent.labels" . | indent 4 }}
+data:
+  application.properties: |
+    orchestrator.host={{.Values.global.adpBR.broServiceName}}
+    orchestrator.port={{.Values.global.adpBR.broGrpcServicePort}}
+    dczk.zookeeper.host={{ template "eric-data-coordinator-zk.clientUrl" . }}
+    dczk.agent.enabled={{.Values.brAgent.enabled}}
+    flag.grpc.siptls.security.enabled={{.Values.security.tls.agentToBro.enabled}}
+    {{- if .Values.security.tls.agentToBro.enabled }}
+    siptls.ca.path= /run/sec/cas/siptlsca/cacertbundle.pem
+    siptls.ca.name= {{ toString .Values.global.adpBR.broServiceName }}
+    {{- else }}
+    siptls.ca.path = ""
+    siptls.ca.name = ""
+    {{- end }}
+    {{- if .Values.brAgent.brLabelValue }}
+        dczk.agent.id={{ .Values.brAgent.brLabelValue }}
+    {{ else }}
+        dczk.agent.id={{ template "eric-data-coordinator-zk.fullname" . }}
+    {{ end }}
+    {{- if .Values.brAgent.backupTypeList }}
+    dczk.agent.scope = {{- template "eric-data-coordinator-zk.agent.backupTypes" . }}
+    {{- end }}
+    dczk.agent.softwareVersion.description=The Backup and Restore Agent for Data Coordinator ZK
+    dczk.agent.softwareVersion.productionDate=date
+    dczk.agent.softwareVersion.productName=data-coordinator-zk-brAgent
+    dczk.agent.softwareVersion.productNumber=CXC 201 1473/1
+    dczk.agent.softwareVersion.type=Database
+    dczk.agent.softwareVersion.revision=1
+    dczk.agent.apiVersion=3.0.1
+{{ .Values.brAgent.properties.applicationProperties | indent 4 }}
+  log4j2.xml: |
+{{ .Values.brAgent.logging.log4jxml | indent 4 }}

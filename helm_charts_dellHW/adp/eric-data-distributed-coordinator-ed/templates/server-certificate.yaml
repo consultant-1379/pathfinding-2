@@ -1,0 +1,81 @@
+{{- if .Values.security.etcd.certificates.enabled }}
+
+{{- $intcert_v1       := .Capabilities.APIVersions.Has "siptls.sec.ericsson.com/v1/InternalCertificate" }}
+{{- $intcert_v1alpha1 := .Capabilities.APIVersions.Has "siptls.sec.ericsson.com/v1alpha1/InternalCertificate"}}
+
+{{- if or $intcert_v1 $intcert_v1alpha1 }}
+
+{{- if $intcert_v1 }}
+apiVersion: siptls.sec.ericsson.com/v1
+{{- else }}
+apiVersion: siptls.sec.ericsson.com/v1alpha1
+{{- end }}
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-data-distributed-coordinator-ed.name" . }}-server-cert
+  labels:
+{{- include "eric-data-distributed-coordinator-ed.labels" . | indent 2 }}
+  annotations:
+{{- include "eric-data-distributed-coordinator-ed.annotations" . | indent 2 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-data-distributed-coordinator-ed.name" . }}-cert
+    certificateName: srvcert.pem
+    privateKeyName: srvprivkey.pem
+  certificate:
+    subject:
+      cn: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+    subjectAlternativeName:
+      dns: {{ include "eric-data-distributed-coordinator-ed.dns" . }}
+    extendedKeyUsage:
+      tlsClientAuth: false
+      tlsServerAuth: true
+    validity:
+      overrideTtl: 604800
+      overrideLeadTime: 601200
+
+{{- else }}
+
+apiVersion: com.ericsson.sec.tls/v1alpha1
+kind: ServerCertificate
+metadata:
+  name: {{ template "eric-data-distributed-coordinator-ed.name" . }}-server-cert
+  labels:
+{{- include "eric-data-distributed-coordinator-ed.labels" . | indent 2 }}
+  annotations:
+{{- include "eric-data-distributed-coordinator-ed.annotations" . | indent 2 }}
+spec:
+  # Required
+  # The secret which SIP-TLS will create and use to store the server certificate
+  # and corresponding private key
+  generated-secret-name: {{ template "eric-data-distributed-coordinator-ed.name" . }}-cert
+
+  # Required
+  # The common name of the certificate
+  common-name: {{ template "eric-data-distributed-coordinator-ed.name" . }}
+
+
+  # Optional
+  # List of additonal DNS names to populate into subject alt name field
+  # By default, the following SANs are pre-populated:
+  # - DNS:<common-name>
+  # - DNS:<common-name>.<namespace>,
+  # - DNS:<common-name>.<namespace>.svc,
+  # - DNS:<common-name>.<namespace>.svc.cluster,
+  # - DNS:<common-name>.<namespace>.svc.cluster.local
+  # additional-sans:
+  # - DNS:{{ template "eric-data-distributed-coordinator-ed.name" . }}
+  # - DNS:{{ template "eric-data-distributed-coordinator-ed.name" . }}.{{ .Release.Namespace }}
+  # - DNS:{{ template "eric-data-distributed-coordinator-ed.name" . }}.{{ .Release.Namespace }}.svc
+  # - DNS:{{ template "eric-data-distributed-coordinator-ed.name" . }}.{{ .Release.Namespace }}.svc.cluster
+  # - DNS:{{ template "eric-data-distributed-coordinator-ed.name" . }}.{{ .Release.Namespace }}.svc.cluster.local
+
+  # Optional
+  # The time to live of the certificate (in seconds). We override the default certificate
+  # time-to-live in order to avoid deadlock when cluster is down.
+  # Recovery from expired certificates require manual intervention.
+  # Set to one week. The certificate is still renewed according to SIP-TLS default.
+  override-ttl: 604800
+
+{{- end -}}
+{{- end -}}

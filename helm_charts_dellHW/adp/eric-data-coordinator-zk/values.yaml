@@ -1,0 +1,280 @@
+# Default values for eric-data-coordinator-zk
+
+# If specified, allows the overriding of the name of all Kubernetes resources in the Data Coordinator ZK service
+#fullnameOverride:
+
+global:
+  registry:
+    # Global image registry
+    url: armdocker.rnd.ericsson.se
+    # The Secret resource name to use for authenticating towards docker registry when pulling the image
+    #pullSecret: armdocker_secret_name
+  # back up orchestrator service config that agent communicates with
+  adpBR:
+    #service name
+    broServiceName: eric-ctrl-bro
+    #service port
+    broGrpcServicePort: 3000
+    brLabelKey: adpbrlabelkey
+  #timezone setting
+  timezone: UTC
+  security:
+    tls:
+      enabled: false
+
+# The number of servers in the Data Coordinator ZK ensemble
+replicas: 3
+
+updateStrategy:
+  # Update Strategy
+  type: "RollingUpdate"
+
+productInfo:
+  # R-State of the product. R State should match helm chart version (3.1.0 -> R2A)
+  # To automate it when packaging the helm chart rstate can be generated
+  # and below value replaced with correct R-State
+  rstate: "R12A"
+
+imageCredentials:
+  registry:
+    # Docker registry url. Overrides global.registry.url
+    url:
+    # The Secret resource name to use for authenticating towards docker registry when pulling the image
+    #pullSecret: armdocker_secret_name
+  # Docker repository path
+  repoPath: "proj-adp-eric-data-dc-zk-drop"
+
+# container images pull Policy
+imagePullPolicy: "Always"
+
+images:
+  datacoordinatorzk:
+    # Docker image name of the ZooKeeper image
+    name: eric-data-coordinator-zk
+    # Docker image tag
+    tag: "1.11.0-21"
+  jmxExporter:
+    # Docker image name of the JMX exporter image
+    name: eric-data-coordinator-zk-jmx-exporter
+    # The image tag of the jmx exporter
+    tag: 1.10.0-1
+  brAgent:
+    name: eric-data-coordinator-zk-bragent
+    tag: "1.11.0-21"
+
+resources:
+  datacoordinatorzk:
+    requests:
+      # This is the min CPU setting at startup
+      cpu: "1"
+      # This is the min Memory setting at startup
+      memory: "2Gi"
+    limits:
+      # This the maximum cpu setting that can be requested
+      cpu: "2"
+      # This is the max memory setting that can be requested
+      memory: "4Gi"
+      ephemeral-storage: "5Gi"
+  jmxExporter:
+    requests:
+      # CPU resources
+      cpu: "50m"
+      # Memory resources. This should be twice as big as the heap
+      memory: "256Mi"
+    limits:
+      # CPU resources limit
+      cpu: "50m"
+      # Memory resources limit. This should be twice as big as the heap
+      memory: "512Mi"
+  brAgent:
+   requests:
+     cpu: "1"
+     memory: "1Gi"
+   limits:
+     cpu: "1"
+     memory: "2Gi"
+
+# Heap resources
+heap: "1G"
+
+# Configure additional zookeeper jvm flags. For example, "-Dzookeeper.skipACL=yes -Dzookeeper.forceSync=no"
+dczkJvmFlags: 
+
+# sets inter-pod anti-affinity , values supported 'Soft/Hard'.
+
+affinity:
+  podAntiAffinity: "soft"
+
+security:
+  tls:
+    agentToBro:
+      enabled: false
+
+service:
+   endpoints:
+     datacoordinatorzk:
+        metricsPort: 21007
+        tls:
+           enforced: optional
+           verifyClientCertificate: "required"
+           servcertTimeToLive: 3600
+           servcertRenewalLeadTime: 3420
+           peer:
+              enforced: "optional"
+              portUnification: true
+           #  provider for tls solution, supported values: none, edaTls, sip-tls
+           provider: "sip-tls"
+         # edaTls:
+           # name of the secret that hold the keystore/truststore and their credentials
+           # secretName: eric-data-coordinator-zk-jks-secret
+           # name of the keystore stored in the secret
+           # keystoreFile: server.keystore.jks
+           # name of the file containing the password of the keystore
+           # keystorePasswordFile: keystorepw
+           # name of the truststore stored in the secret
+           # truststoreFile: server.truststore.jks
+           # name of the file containing the password of the truststore
+           # truststorePasswordFile: truststorepw
+           # enable/disable client authentication, possible values: need,want,none
+           # clientAuth: need
+
+
+network:
+  datacoordinatorzk:
+    adminServer:
+      # port for the admin server
+      port: 8080
+      # Admin server address
+      address: "127.0.0.1"
+    client:
+      tlsPort: 2281
+
+#Specify labels for directing node assignment. Format - label: value
+nodeSelector: 
+  datacoordinatorzk: {}
+  brAgent: {}
+
+# The port Data Coordinator ZK followers use to connect to the leader
+serverPort: 2888
+
+# The port used for leader election
+leaderElectionPort: 3888
+
+# The port to listen for client connections; that is, the port that clients attempt to connect to
+clientPort: 2181
+
+# The number of servers to maintain a quorum in the Data Coordinator ZK ensemble. The default value of 55% ensures a quorum for an ensemble service of size 3, 5, 7, or 9 servers
+minAvailable: "55%"
+
+# The length of a single tick, which is the basic time unit used by Data Coordinator ZK, measured in milliseconds
+tickTimeMs: 2000
+
+# Amount of time, in ticks (see tickTimeMs), to allow followers to connect and sync to a leader. Increased this value as needed if data is large
+initLimit: 10
+
+# Amount of time, in ticks (see tickTime), to allow followers to sync with Data Coordinator ZK. If followers fall too far behind a leader, they will be dropped
+syncLimit: 5
+
+# Limits the number of concurrent connections (socket level) that a single client, identified by IP address, may make to a single member of the Data Coordinator ZK ensemble
+maxClientCnxns: 60
+
+# Number of snapshots to keep. If more than snapRetainCount snapshots are present the oldest ones will be purged
+snapRetainCount: 3
+
+# Number of transactions before creating a snapshot
+snapCount: 1000000
+
+# The time interval for which purging of the snapshots is triggered
+purgeIntervalHours: 1
+
+# Number of seconds that kubelet waits before performing the first service availability check probe
+readinessProbeInitialDelaySeconds : 15
+
+# Timeout for the service availability check
+readinessProbeTimeoutSeconds : 5
+
+# The number of seconds that kubelet waits before performing the first health check probe
+livenessProbeInitialDelaySeconds : 15
+
+# The timeout for the health check
+livenessProbeTimeoutSeconds : 5
+
+# The root logging level
+logLevel: "INFO"
+
+# The log message to be filtered from the logs.(Multiple messages can be configured)
+logFilterMessage:
+  - "Unable to read additional data from client sessionid 0x0"
+  
+# The Kubernetes cluster domain that gets populated to Subject Alternative Name
+clusterDomain: "cluster.local"
+
+jmxExporter:
+  # If set to true, enables the monitoring of Java Management Extensions (JMX) using the PM Server Microservice. To ensure the monitoring metrics can be viewed, deploy the PM Server service
+  enabled: false
+  # Data Coordinator ZK provides JMX metrics on port 10007
+  destPort: 10007
+  # JMX exporter scrapes the metrics and makes them available in text format, exposed on port 21007
+  servicePort: 21007
+  # Uses default rule set in JMX container which allows scaping of all metrics in a default format
+  rules: default
+
+persistence:
+  persistentVolumeClaim:
+   # Size of the persistent volume
+   size: "1Gi"
+   # The storage class to use for the persistent volume
+   storageClassName: "hostpath"
+   # A Boolean variable indicating whether the Helm chart uses a persistent volume (true) or whether it uses ephermal storage (false)
+   enabled: false
+
+persistantVolumeClaim:
+   # Size of the persistent volume
+   storage: "1Gi"
+   # The storage class to use for the persistent volume
+   storageClassName: "hostpath"
+   # Persistent Volume access mode
+   accessModes: "ReadWriteOnce"
+   # A Boolean variable indicating whether the Helm chart uses a persistent volume (true) or whether it uses ephermal storage (false)
+   enabled: true
+
+brAgent:
+   enabled: false
+   brLabelValue:
+   replicas: 1
+   logLevel: "INFO"
+   backupTypeList:
+   properties:
+     fileName: "application.properties"
+     applicationProperties: |-
+       dczk.excluded.paths=/zookeeper, /eric-data-message-bus-kf
+       dczk.included.paths=
+       dczk.agent.restore.type=default
+   logging:
+     fileName: "log4j2.xml"
+     log4jxml: |-
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Configuration status="WARN" monitorInterval="30" packages="com.ericsson.adp.mgmt.dczk.bragent.logging">
+            <Appenders>
+                <Console name="Appender" target="SYSTEM_OUT" follow="true">
+                    <AdpJsonLayout compact="true" eventEol="true" >
+                       <!--  Mandatory Fields -->
+                       <KeyValuePair key="version" value="0.3.0"/>
+                       <KeyValuePair key="timestamp" value="yyyy-MM-dd'T'HH:mm:ss.SSSZ"/>
+                       <KeyValuePair key="service_id" value="eric-data-coordinator-zk-bra-agent"/>
+                       <RewriteField oldKey="level_standardLevel" newKey="severity"/>
+                       <RewriteField oldKey="message_formattedMessage" newKey="message"/>
+                       <!--  Optional Fields -->
+                       <KeyValuePair key="function" value="Backup and Restore"/>
+                       <KeyValuePair key="category" value="Data Coordinator ZK"/>
+                       <RewriteField oldKey="source_classLoaderName" newKey="proc_id"/>
+                       <RewriteField oldKey="source_className" newKey="ul_id"/>
+                    </AdpJsonLayout>
+                </Console>
+            </Appenders>
+            <Loggers>
+                <Root level="${env:LOG_LEVEL:-INFO}">
+                    <AppenderRef ref="Appender" />
+                </Root>
+            </Loggers>
+        </Configuration>

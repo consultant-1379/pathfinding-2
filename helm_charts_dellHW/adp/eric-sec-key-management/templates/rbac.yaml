@@ -1,0 +1,64 @@
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}-conf-role
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["{{ template "eric-sec-key-management.name" . }}-unseal-key"]
+    verbs: ["get", "update"]
+  {{- if .Values.shelter.enabled }}
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["{{ template "eric-sec-key-management.name" . }}-shelter-key"]
+    verbs: ["get", "update"]
+  {{- end }}
+  {{- if and ( eq .Values.persistence.type "etcd" ) .Values.persistence.etcd.tls.enabled }}
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["eric-sec-sip-tls-bootstrap-ca-cert", "eric-sec-sip-tls-trusted-root-cert"]
+    verbs: ["get"]
+  {{- end }}
+
+---
+
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}-conf-rolebinding
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "eric-sec-key-management.name" . }}-auth
+roleRef:
+  kind: Role
+  name: {{ template "eric-sec-key-management.name" . }}-conf-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+{{- if .Values.deployClusterRoleBinding }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-rolebinding-%s" (include "eric-sec-key-management.name" .) (randAlphaNum 5) }}
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "eric-sec-key-management.name" . }}-auth
+    namespace: {{ .Release.Namespace }}
+{{- end }}

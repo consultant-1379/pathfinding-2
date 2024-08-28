@@ -1,0 +1,7 @@
+{
+	"totalBatches":1,
+	"messagesPerBatch":1,
+	"topic":"PM_E_MGW_FILES",
+	"repeat":true,
+	"inputFile":"/root/mdc/A20200918.0000+0100-0015+0100_SubNetwork=Europe,SubNetwork=Ireland,SubNetwork=ERBS-SUBNW-1,MeContext=ieatnetsimv7038-08_LTE03ERBS00001_statsfile.xml.gz"
+}

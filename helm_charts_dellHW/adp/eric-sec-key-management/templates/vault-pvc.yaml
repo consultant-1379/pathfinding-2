@@ -1,0 +1,28 @@
+{{- if eq .Values.persistence.type "pvc" }}
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}-pvc
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+    {{- if .Values.persistence.pvc.keep }}
+    "helm.sh/resource-policy": keep
+    {{- end }}
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      {{- if .Values.persistence.pvc.storage }}
+      storage: {{ .Values.persistence.pvc.storage | quote }}
+      {{- else }}
+      storage: {{ .Values.persistence.pvc.size | quote }}
+      {{- end }}
+  {{- if .Values.persistence.pvc.storageClassName }}
+  storageClassName: {{ .Values.persistence.pvc.storageClassName | quote }}
+  {{- end }}
+
+{{- end }}

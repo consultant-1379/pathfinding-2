@@ -1,0 +1,28 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sbkafka
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sbkafka
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 30
+  behavior:
+    scaleDown:
+      selectPolicy: Disabled
+    #policies:
+    #- type: Pods
+    #  value: 4
+    #  periodSeconds: 60
+    #- type: Percent
+    #  value: 10
+    #  periodSeconds: 60

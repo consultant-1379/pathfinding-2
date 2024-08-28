@@ -1,0 +1,12 @@
+{{- if false -}}
+# Sanity checks for input values.
+# In a nutshell:
+# The Helm template function 'required' will throw an error if the parameter given to it cannot be found.
+# This essentially means it will always throw this error because 'nonExistent' never exists.
+# However, the whole check is only rendered when the 'if' condition is true, otherwise it is skipped.
+# I.e., the below lines can be read as: 'if <boolean expression> fails, throw error'
+{{- end -}}
+
+{{- if gt (.Values.replicas | int) 2 -}}
+{{- required "Valid value for replicas is 1 or 2" .Values.nonExistent -}}
+{{- end -}}

@@ -1,0 +1,97 @@
+{{- if .Values.service.tls.enabled }}
+
+{{- $intcert_v1       := .Capabilities.APIVersions.Has "siptls.sec.ericsson.com/v1/InternalCertificate" }}
+{{- $intcert_v1alpha1 := .Capabilities.APIVersions.Has "siptls.sec.ericsson.com/v1alpha1/InternalCertificate"}}
+
+{{- if or $intcert_v1 $intcert_v1alpha1 }}
+
+{{- if $intcert_v1 }}
+apiVersion: siptls.sec.ericsson.com/v1
+{{- else }}
+apiVersion: siptls.sec.ericsson.com/v1alpha1
+{{- end }}
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-sec-key-management.name" . }}-kms-cert
+    certificateName: 'srvcert.pem'
+    privateKeyName: 'srvprivkey.pem'
+  certificate:
+    subject:
+      cn: {{ template "eric-sec-key-management.name" . }}
+    validity:
+      # Renewal policy:
+      #
+      # The time to live of the certificate (in seconds). We override
+      # the default certificate time-to-live in order to avoid deadlock
+      # when cluster is down. Since KMS is dependent on DCED, if the
+      # KMS certificate expires then it cannot communicate with DCED
+      # and SIP-TLS can no longer provision certificates. It would
+      # require manual intervention. Set to one week (7 days = 604800 s).
+      #
+      # The certificate is renewed after 1 hour, meaning the lead time
+      # is 7 days - 1 hour = 604800 s - 3600 s = 601200 s. This means
+      # that it takes about 6.95 days before a valid certificate expires.
+      overrideTtl: 604800
+      overrideLeadTime: 601200
+
+    {{- if gt (.Values.replicas | int) 1 }}
+    # Needed for client redirection when a client hits standby node
+    subjectAlternativeName:
+      dns:
+        {{- range $i := until (.Values.replicas | int) }}
+        - {{ template "eric-sec-key-management.name" $ }}-main-{{ $i }}.{{ template "eric-sec-key-management.name" $ }}-peer
+        {{- end }}
+    {{- end }}
+
+    extendedKeyUsage:
+      tlsClientAuth: false
+      tlsServerAuth: true
+
+{{- else }}
+
+apiVersion: com.ericsson.sec.tls/v1alpha1
+kind: ServerCertificate
+metadata:
+  name: {{ template "eric-sec-key-management.name" . }}
+  labels:
+    {{- include "eric-sec-key-management.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-key-management.product-info" . | nindent 4 }}
+spec:
+  # The secret name where SIP-TLS is storing our certificate
+  generated-secret-name: {{ template "eric-sec-key-management.name" . }}-kms-cert
+
+  # The common name (and the derived SANs) populated in the certificate
+  common-name: {{ template "eric-sec-key-management.name" . }}
+
+  {{- if gt (.Values.replicas | int) 1 }}
+  # Needed for client redirection when a client hits standby node
+  additional-sans:
+    {{- range $i := until (.Values.replicas | int) }}
+    - DNS:{{ template "eric-sec-key-management.name" $ }}-main-{{ $i }}.{{ template "eric-sec-key-management.name" $ }}-peer
+    {{- end }}
+  {{- end }}
+
+  # Renewal policy (only partial due to obsolete ServerCertificate):
+  #
+  # The time to live of the certificate (in seconds). We override
+  # the default certificate time-to-live in order to avoid deadlock
+  # when cluster is down. Since KMS is dependent on DCED, if the
+  # KMS certificate expires then it cannot communicate with DCED
+  # and SIP-TLS can no longer provision certificates. It would
+  # require manual intervention.  Set to one week (7 days = 604800 s).
+  #
+  # BEWARE: With the obsolete ServerCertificate, there is no way to
+  # set the lead time explicitly. The certificate is renewed according
+  # to SIP-TLS installation values.
+  override-ttl: 604800
+
+{{- end }}
+{{- end }}

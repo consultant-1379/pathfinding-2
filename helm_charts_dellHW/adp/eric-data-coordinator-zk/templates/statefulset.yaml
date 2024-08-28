@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "eric-data-coordinator-zk.fullname" . }}
+  annotations:
+{{- include "eric-data-coordinator-zk.productinfo" . | indent 4 }}
+    helm.sh/created: "{{ now.Unix }}"
+  labels:
+{{- include "eric-data-coordinator-zk.labels" . | indent 4 }}
+spec:
+  selector:
+    matchLabels:
+{{- include "eric-data-coordinator-zk.selectorLabels" . | indent 6 }}
+  serviceName:  {{ template "eric-data-coordinator-zk.ensembleService.fullname" . }}
+  podManagementPolicy: "Parallel"
+  replicas: {{ .Values.replicas }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy.type | quote }}
+  template:
+    metadata:
+      labels:
+{{- include "eric-data-coordinator-zk.labels" . | indent 8 }}
+      annotations:
+{{- include "eric-data-coordinator-zk.productinfo" . | indent 8 }}
+        prometheus.io/scrape: "true"
+        {{- if .Values.jmxExporter.enabled }}
+        prometheus.io/port: {{ .Values.jmxExporter.servicePort | quote }}
+        {{- else }}
+        prometheus.io/port: {{ .Values.service.endpoints.datacoordinatorzk.metricsPort | quote }}
+        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ template "eric-data-coordinator-zk.fullname" . }}-sa
+      serviceAccount: ""
+      securityContext:
+        fsGroup: 0
+      {{- if  .Values.imageCredentials.registry.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imageCredentials.registry.pullSecret | quote }}
+      {{- else if .Values.global.registry.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.registry.pullSecret | quote }}
+      {{- end }}
+      {{- if eq .Values.affinity.podAntiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - {{ template "eric-data-coordinator-zk.name" . }}
+            topologyKey: "kubernetes.io/hostname"
+      {{- else if eq .Values.affinity.podAntiAffinity  "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ template "eric-data-coordinator-zk.name" . }}
+              topologyKey: "kubernetes.io/hostname"
+      {{- end }}
+      containers:
+      - name:  {{ .Chart.Name }}
+        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+        {{- if .Values.imageCredentials.registry.url }}
+        image: "{{ .Values.imageCredentials.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.datacoordinatorzk.name }}:{{ .Values.images.datacoordinatorzk.tag }}"
+        {{- else }}
+        image: "{{ .Values.global.registry.url }}/{{ .Values.imageCredentials.repoPath }}/{{ .Values.images.datacoordinatorzk.name }}:{{ .Values.images.datacoordinatorzk.tag }}"
+        {{- end }}
+        resources:
+          requests:
+            memory: {{ .Values.resources.datacoordinatorzk.requests.memory | quote }}
+            cpu: {{ .Values.resources.datacoordinatorzk.requests.cpu | quote }}
+          limits:
+            memory: {{ .Values.resources.datacoordinatorzk.limits.memory | quote }}
+            cpu: {{ .Values.resources.datacoordinatorzk.limits.cpu | quote }}
+        ports:
+{{- if and ( .Values.global.security.tls.enabled ) ( eq .Values.service.endpoints.datacoordinatorzk.tls.enforced "required" ) }}
+        - containerPort: {{ .Values.network.datacoordinatorzk.client.tlsPort }}
+          name: client
+{{- else }}
+        - containerPort: {{ .Values.clientPort }}
+          name: client
+{{- end }}
+        - containerPort: {{ .Values.serverPort }}
+          name: server
+        - containerPort: {{ .Values.leaderElectionPort }}
+          name: leader-election
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - all
+        env:
+        - name: TZ
+          value: {{ .Values.global.timezone | quote }}
+        - name: ZOOBINDIR
+          value: "/opt/zookeeper/bin"
+        - name: ZK_ADMIN_SERVER_PORT
+          value: {{ .Values.network.datacoordinatorzk.adminServer.port | quote }}
+        - name: ZOO_LOG4J_PROP
+          value: "{{ .Values.logLevel }},CONSOLE"
+{{- if ( .Values.global.security.tls.enabled ) }}
+        - name: SSL_CERTS_PROVIDER
+          value: {{ .Values.service.endpoints.datacoordinatorzk.tls.provider }}
+{{- end }}
+        livenessProbe:
+          tcpSocket:
+{{- if and ( .Values.global.security.tls.enabled ) ( eq .Values.service.endpoints.datacoordinatorzk.tls.enforced "required" ) }}
+            port: {{ .Values.network.datacoordinatorzk.client.tlsPort }}
+{{- else }}
+            port: {{ .Values.clientPort }}
+{{- end }}
+          initialDelaySeconds: {{ .Values.livenessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.livenessProbeTimeoutSeconds }}
+        readinessProbe:
+          exec:
+            command:
+            - "zkOk.sh"
+          initialDelaySeconds: {{ .Values.readinessProbeInitialDelaySeconds }}
+          timeoutSeconds: {{ .Values.readinessProbeTimeoutSeconds }}
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/lib/zookeeper
+        - name: {{ template "eric-data-coordinator-zk.name" . }}
+          mountPath: /opt/zookeeper/conf
+{{- include "eric-data-coordinator-zk.secretsMountPath" . | nindent 6 }}
+      volumes:
+      - name: {{ template "eric-data-coordinator-zk.name" . }}
+        configMap:
+          name: {{ template "eric-data-coordinator-zk.name" . }}
+{{- if and ( not .Values.persistence.persistentVolumeClaim.enabled ) ( not .Values.persistantVolumeClaim.enabled ) }}
+      - name: datadir
+        emptyDir:
+          sizeLimit: {{ index .Values.resources.datacoordinatorzk.limits "ephemeral-storage" }}
+{{- end }}
+{{- include "eric-data-coordinator-zk.volumes" . | nindent 6 -}} 
+{{- if .Values.nodeSelector.datacoordinatorzk }}
+      nodeSelector: {{ toYaml .Values.nodeSelector.datacoordinatorzk | trim | nindent 8 -}}
+{{- end}}
+{{- if .Values.persistence.persistentVolumeClaim.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.persistentVolumeClaim.size | quote }}
+      storageClassName: {{ .Values.persistence.persistentVolumeClaim.storageClassName | quote }}
+{{- end }}
+{{- if .Values.persistantVolumeClaim.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ {{ .Values.persistantVolumeClaim.accessModes | quote }} ]
+      resources:
+        requests:
+          storage: {{ .Values.persistantVolumeClaim.storage | quote }}
+      {{- if and (ne .Values.persistantVolumeClaim.storageClassName "default") (.Values.persistantVolumeClaim.storageClassName) }}
+      storageClassName: {{ .Values.persistantVolumeClaim.storageClassName | quote }}
+      {{- end }}
+{{- end }}

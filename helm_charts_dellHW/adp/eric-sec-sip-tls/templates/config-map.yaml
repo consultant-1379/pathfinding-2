@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ template "eric-sec-sip-tls.name" . }}-config"
+  labels:
+    {{- include "eric-sec-sip-tls.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-sec-sip-tls.product-info" . | nindent 4 }}
+data: 
+  # Keys in the json should follow same syntactical rules as with Python variables
+  config.json: |
+    {
+      "bootstrap_ca": {
+        "name": "{{ template "eric-sec-sip-tls.name" . }} Internal Bootstrap CA"
+      },
+      "root_ca": {
+        "name": "{{ template "eric-sec-sip-tls.name" . }} Internal Root CA",
+        "path": "{{ template "eric-sec-sip-tls.name" . }}-root-ca",
+        "ttl": "876000h"
+      },
+      "sub_ca": {
+        "name": "{{ template "eric-sec-sip-tls.name" . }} Internal Intermediate CA",
+        "path": "{{ template "eric-sec-sip-tls.name" . }}-sub-ca",
+        "ttl": "876000h",
+        "role_name": "ca-role",
+        "role_max_ttl": "604800",
+        "csr_role_name": "csr-role",
+        "csr_role_max_ttl": "15778800"
+      },
+      "user_ca": {
+        "base_path": "{{ template "eric-sec-sip-tls.name" . }}-client-ca",
+        "ttl": "876000h",
+        "ca_default_key": "ca.pem",
+        "csr_role_name": "csr-role",
+        "csr_role_max_ttl": "15778800"
+      },
+      "internal_cert": {
+        "ttl": {{ .Values.internalCertificate.validLifetimeSeconds | quote }},
+        "renewal_ratio": {{ .Values.internalCertificate.renewalThresholdRatio | quote }},
+        "default_cert_name": "cert.pem",
+        "default_priv_key_name": "key.pem",
+        "default_priv_key_format": "pkcs8",
+        "cluster_domain": {{ .Values.internalCertificate.clusterDomain | quote }}
+      },
+      "client_ca": {
+        "base_path": "{{ template "eric-sec-sip-tls.name" . }}-client-ca",
+        "ttl": "876000h",
+        "role_name": "ca-role",
+        "role_max_ttl": "604800",
+        "client_ca_cert_key": "client-cacertbundle.pem"
+      },
+      "server_cert": {
+        "ttl": {{ .Values.serverCertificate.validLifetimeSeconds | quote }},
+        "renewal_ratio": {{ .Values.serverCertificate.renewalThresholdRatio | quote }},
+        "cert_key": "srvcert.pem",
+        "cert_priv_key": "srvprivkey.pem"
+      },
+      "client_cert": {
+        "ttl": {{ .Values.clientCertificate.validLifetimeSeconds | quote }},
+        "renewal_ratio": {{ .Values.clientCertificate.renewalThresholdRatio | quote }},
+        "cert_key": "clicert.pem",
+        "cert_priv_key": "cliprivkey.pem"
+      },
+      "emergency_cert": {
+        "ttl": "{{ template "eric-sec-sip-tls.supervisor.emergencyTtl" . }}"
+      },
+      "kms": {
+        "dns": {{ .Values.keyManagement.hostname | quote }},
+        "port": {{ .Values.keyManagement.port | quote }},
+        "namespace": {{ .Release.Namespace | quote }},
+        "role_name": "{{ template "eric-sec-sip-tls.name" . }}-sub-ca-role",
+        "policy_name": "{{ template "eric-sec-sip-tls.name" . }}-sub-ca-policy",
+        "credentials_service_account_name": {{ .Values.keyManagement.serviceAccountNameForCredentials | quote }},
+        "credentials_role_name": "service-credentials",
+        "root_token_key": "token",
+        "kubernetes_auth_path": "kubernetes",
+        "kv_secret_path": "secret-v2"
+      },
+      "etcd": {
+        "dns": {{ default "" .Values.etcd.hostname  | quote }},
+        "peer_dns": {{ default "" .Values.etcd.peerCn  | quote }},
+        "namespace": {{ .Release.Namespace | quote }}
+      },
+      "siptls": {
+        "name": "{{ template "eric-sec-sip-tls.name" . }}",
+        "ca_secret": "eric-sec-sip-tls-trusted-root-cert",
+        "trusted_bundle_key": "cacertbundle.pem",
+        "ca_crt_key": "ca.crt",
+        "bootstrap_ca_secret": "eric-sec-sip-tls-bootstrap-ca-cert",
+        "bootstrap_bundle_key": "cacertbundle.pem",
+        "namespace": {{ .Release.Namespace | quote }}
+      }
+    }
+  release.info: | 
+    {{- include "eric-sec-sip-tls.product-info" . | nindent 4 }}

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "eric-data-message-bus-kf.fullname" . }}-client
+  labels:
+{{- include "eric-data-message-bus-kf.labels" . | indent 4}}
+  annotations:
+{{- include "eric-data-message-bus-kf.productinfo" . | indent 4 }}
+spec:
+  type: NodePort
+  ports:
+{{- if include "eric-data-message-bus-kf.plaintext.enabled" . }}
+  - port: {{ template "eric-data-message-bus-kf.plaintextPort" . }}
+    name: broker-plaintext
+{{- end }}
+{{- if .Values.global.security.tls.enabled }}
+  - port: {{ .Values.security.tls.messagebuskf.port }}
+    name: broker-tls
+{{- end }}
+  selector:
+{{- include "eric-data-message-bus-kf.selectorLabels" . | indent 4}}

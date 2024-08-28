@@ -1,0 +1,105 @@
+{{- if .Values.manuallyDeployCrd }}
+
+# Install manually, replacing <VERSION> with the current k8s server version of your cluster.
+# The version can be fetched by checking the serverVersion.gitVersion field of the 'kubectl version' command. E.g.:
+#
+#   VERSION=$(kubectl version -o yaml | grep "serverVersion" -A9 | grep "gitVersion" | awk '{print $2}') && echo $VERSION
+#
+# Then install the CRD by issuing the following command:
+#
+#   helm template charts/eric-sec-sip-tls/ -x templates/internal-user-ca-crd.yaml --set manuallyDeployCrd=true --kube-version="$VERSION" | kubectl apply -f -
+#
+# 'helm template' renders the template without executing it and outputs the result.
+# 'kubectl apply' takes the output as stdin and pushes it to the cluster.
+#
+# Side note: 'helm template' renders the values locally without contacting tiller. This means that .Capabilities struct is faked and cannot be used directly.
+#            Instead kube-version is given manually to indicate a sufficient k8s version.
+
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: internalusercas.siptls.sec.ericsson.com
+  annotations:
+    {{- include "eric-sec-sip-tls.product-info" . | nindent 4 }}
+spec:
+  group: siptls.sec.ericsson.com
+  {{- if (semverCompare ">=1.11" .Capabilities.KubeVersion.GitVersion) }}
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+  {{- else }}
+  version: v1alpha1
+  {{- end }}
+  scope: Namespaced
+  names:
+    plural: internalusercas
+    singular: internaluserca
+    kind: InternalUserCA
+    shortNames:
+      - intuserca
+      - intusercas
+  {{- if (semverCompare ">=1.15" .Capabilities.KubeVersion.GitVersion) }}
+  preserveUnknownFields: false
+  {{- end }}
+  {{- if (semverCompare ">=1.11" .Capabilities.KubeVersion.GitVersion) }}
+  validation:
+    openAPIV3Schema:
+      type: object
+      description: InternalUserCA is used to request a CA certificate from SIP-TLS.
+      properties:
+        spec:
+          required:
+            - kubernetes
+            - certificate
+          type: object
+          description: Spec defines the properties of the CA certificate.
+          properties:
+
+            kubernetes:
+              type: object
+              description: Defines properties related to the storage of the certificate and private key in Kubernetes.
+              required:
+                - generatedSecretName
+              properties:
+                generatedSecretName:
+                  type: string
+                  description: The secret where the CA certificate is stored. The same secret should not be used for
+                               multiple purposes.
+                  # Use the same regex as used by Kubernetes API Server
+                  pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+
+                certificateName:
+                  type: string
+                  description: The YAML key name of the CA certificate in the secret. If not given, 'ca.pem' is used.
+                  # Disallow whitespace
+                  pattern: '^[^\s]+$'
+
+            certificate:
+              type: object
+              description: Defines properties related to the content of the CA certificate.
+              required:
+                - subject
+              properties:
+                subject:
+                  type: object
+                  description: Properties related to X.509 'Subject' field.
+                  required:
+                    - cn
+                  properties:
+                    cn:
+                      type: string
+                      description: The Subject Common Name (CN) of the CA certificate.
+                      # Don't allow empty string
+                      minLength: 1
+  additionalPrinterColumns:
+    - name: CN
+      type: string
+      description: The requested CA certificate common name.
+      JSONPath: .spec.certificate.subject.cn
+    - name: Secret
+      type: string
+      description: The Kubernetes secret where the CA certificate is stored.
+      JSONPath: .spec.kubernetes.generatedSecretName
+  {{- end }}
+{{- end }}

@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: sbkafka
+  name: sbkafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sbkafka
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: sbkafka
+    spec:
+      containers:
+      - image: 10.45.194.77:5000/sbkafka:1.0
+        name: sbkafka
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/mdc/
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "9887"
+        - name: APP_HOME
+          value: "/root/parser"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.sbkafka.SbkafkaApplication"
+
+        resources:
+         limits:
+            cpu: 500m
+         requests:
+            cpu: 200m
+        ports:
+        # containerPort is the port exposed by the container (where nodejs express api is listening)
+        - containerPort: 9887
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/mdc
+          # this field is optional
+          type: Directory

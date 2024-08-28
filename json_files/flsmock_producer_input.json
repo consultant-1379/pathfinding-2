@@ -1,0 +1,7 @@
+{
+	"totalBatches":200,
+	"messagesPerBatch":5,
+	"inDir":"/root/mdc/",
+	"repeat":true,
+	"repeatFile":"A20200918.0000+0100-0015+0100_SubNetwork=Europe,SubNetwork=Ireland,SubNetwork=ERBS-SUBNW-1,MeContext=ieatnetsimv7038-08_LTE03ERBS00001_statsfile.xml.gz"
+}

@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>2.3.4.RELEASE</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.ericsson.eniq.etl</groupId>
+	<artifactId>mdc</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>mdc</name>
+	<description>Demo project for Spring Boot</description>
+
+	<properties>
+		<java.version>1.8</java.version>
+		<lib.path>\\seliisfile\home\zkumlog\WDP\spring_workspace\3gpp_lib</lib.path>
+		<lib.version>0.0.1-SNAPSHOT</lib.version>
+		<lib.groupId>com.ericsson.etl</lib.groupId>
+		<lib.scope>system</lib.scope>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>xerces-2.6.2</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\xerces-2.6.2.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>xercesImpl-2.0.2</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\xercesImpl-2.0.2.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>alarm</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\alarm.jar</systemPath>
+		</dependency>
+		<!-- <dependency> <groupId>${lib.groupId}</groupId> <artifactId>parser</artifactId> 
+			<version>${version}</version> <scope>${lib.scope}</scope> <systemPath>${lib.path}\parser.jar</systemPath> 
+			</dependency> -->
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>repository</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\repository.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>common</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\common.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>gson-2.8.6</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\gson-2.8.6.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>jsch-0.1.54</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\jsch-0.1.54.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>velocity-1.7-de</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\velocity-1.7-dep.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>commons-logging-1.2g</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\commons-logging-1.2.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>javax.annotation-api-1.2</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\javax.annotation-api-1.2.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>javax.ws.rs-api-2.0.1</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\javax.ws.rs-api-2.0.1.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>jersey-client-2.21</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\jersey-client-2.21.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>jersey-apache-connector-2.21</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\jersey-apache-connector-2.21.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>jersey-common-2.21</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\jersey-common-2.21.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>jconn4</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\jconn4.jar</systemPath>
+		</dependency>
+		<!--  <dependency>
+			<groupId>${lib.groupId}</groupId>
+			<artifactId>sajdbc4</artifactId>
+			<version>${version}</version>
+			<scope>${lib.scope}</scope>
+			<systemPath>${lib.path}\sajdbc4.jar</systemPath>
+		</dependency>-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.parquet</groupId>
+			<artifactId>parquet-hadoop-bundle</artifactId>
+			<version>1.11.1</version>
+		</dependency>
+
+		<!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common -->
+		<dependency>
+			<groupId>org.apache.hadoop</groupId>
+			<artifactId>hadoop-common</artifactId>
+			<version>3.3.0</version>
+		</dependency>
+
+
+		<!-- https://mvnrepository.com/artifact/org.apache.parquet/parquet-avro -->
+		<dependency>
+			<groupId>org.apache.parquet</groupId>
+			<artifactId>parquet-avro</artifactId>
+			<version>1.11.1</version>
+		</dependency>
+		<!-- https://mvnrepository.com/artifact/org.apache.avro/avro -->
+		<dependency>
+			<groupId>org.apache.avro</groupId>
+			<artifactId>avro</artifactId>
+			<version>1.10.0</version>
+		</dependency>
+		<!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.11.2</version>
+		</dependency>
+		<!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-core -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-core</artifactId>
+			<version>2.11.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>org.junit.vintage</groupId>
+					<artifactId>junit-vintage-engine</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<includeSystemScope>true</includeSystemScope>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

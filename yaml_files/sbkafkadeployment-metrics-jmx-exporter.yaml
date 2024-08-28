@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: sbkafka-metrics-jmx-exporter
+  name: sbkafka-metrics-jmx-exporter
+  annotations:
+    "prometheus.io/scrape": "true"
+    "prometheus.io/port": "9679"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sbkafka-metrics-jmx-exporter
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: sbkafka-metrics-jmx-exporter
+    spec:
+      containers:
+      - image: 10.45.193.129:5000/sbkafka-metrics-jmx-exporter:1.0
+        name: sbkafka-jmx
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/mdc/
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "9679"
+        - name: APP_HOME
+          value: "/root/parser"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.sbkafka.SbkafkaApplication"
+
+        resources:
+         limits:
+            #cpu: "1"
+         requests:
+            cpu: 6
+        ports:
+        # containerPort is the port exposed by the container (where nodejs express api is listening)
+        - containerPort: 9679
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/mdc
+          # this field is optional
+          type: Directory

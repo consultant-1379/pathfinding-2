@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name:  {{ template "eric-data-coordinator-zk.ensembleService.fullname" . }}
+  labels:
+{{- include "eric-data-coordinator-zk.labels" . | indent 4 }}
+  annotations:
+{{- include "eric-data-coordinator-zk.productinfo" . | indent 4 }}
+spec:
+  publishNotReadyAddresses: true
+  ports:
+  - port: {{ .Values.serverPort }}
+    name: server
+  - port: {{ .Values.leaderElectionPort }}
+    name: leader-election
+  clusterIP: None
+  selector:
+{{- include "eric-data-coordinator-zk.selectorLabels" . | indent 4 }}

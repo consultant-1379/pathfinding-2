@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: sbkafka-metrics-actuator
+  name: sbkafka-metrics-actuator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sbkafka-metrics-actuator
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: sbkafka-metrics-actuator
+    spec:
+      containers:
+      - image: 10.45.193.129:5000/sbkafka-metrics-actuator:1.0
+        name: sbkafka-metrics-actuator
+        imagePullPolicy: Always
+        volumeMounts:
+        - mountPath: /root/mdc/
+          name: host-fs
+        env:
+        - name: APP_PORT
+          value: "7878"
+        - name: APP_HOME
+          value: "/root/parser"
+        - name: APP_STARTUP
+          value: "com.ericsson.eniq.sbkafka.SbkafkaApplication"
+
+        resources:
+         limits:
+            #cpu: "1"
+         requests:
+            cpu: 10
+        ports:
+        # containerPort is the port exposed by the container (where nodejs express api is listening)
+        - containerPort: 7878
+      volumes:
+      - name: host-fs
+        hostPath:
+          # directory location on host
+          path: /root/mdc
+          # this field is optional
+          type: Directory

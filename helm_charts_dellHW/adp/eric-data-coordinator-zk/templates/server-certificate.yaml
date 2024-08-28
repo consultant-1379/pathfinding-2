@@ -1,0 +1,26 @@
+{{- if and ( .Values.global.security.tls.enabled ) ( eq .Values.service.endpoints.datacoordinatorzk.tls.provider "sip-tls" ) }}
+apiVersion: siptls.sec.ericsson.com/v1alpha1
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-data-coordinator-zk.fullname" . }}-server-cert
+  labels:
+{{- include "eric-data-coordinator-zk.labels" . | indent 4}}
+  annotations:
+{{- include "eric-data-coordinator-zk.productinfo" . | indent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-data-coordinator-zk.server.cert.secret" . }}
+    certificateName: srvcert.pem
+    privateKeyName: srvprivkey.pem
+  certificate:
+    subject:
+      cn: {{ template "eric-data-coordinator-zk.fullname" . }}
+    subjectAlternativeName:
+      dns: {{ include "eric-data-coordinator-zk.dns" . }}
+    extendedKeyUsage:
+      tlsClientAuth: true
+      tlsServerAuth: true
+    validity:
+      overrideTtl: {{ .Values.service.endpoints.datacoordinatorzk.tls.servcertTimeToLive }}
+      overrideLeadTime: {{ .Values.service.endpoints.datacoordinatorzk.tls.servcertRenewalLeadTime }}
+{{- end -}}
